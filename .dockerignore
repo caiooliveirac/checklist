@@ -1,0 +1,11 @@
+node_modules
+**/node_modules
+**/dist
+.git
+.github
+.env*
+.deploy-env
+*.log
+scripts
+README.md
+CLAUDE.md

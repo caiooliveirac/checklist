@@ -1,0 +1,17 @@
+{
+  "name": "Checklist USA — SAMU Salvador",
+  "short_name": "Checklist USA",
+  "description": "Checklist diário de materiais e equipamentos das USAs",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#C73227",
+  "icons": [
+    {
+      "src": "/samu192.png",
+      "sizes": "1055x1056",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

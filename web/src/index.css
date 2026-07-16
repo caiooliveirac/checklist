@@ -1,0 +1,159 @@
+@import "tailwindcss";
+
+/*
+  Identidade visual herdada do samu-normas (mnrs.com.br/manual):
+  vermelho institucional #C73227, apoio #DF4E24, fundo slate, marca d'água SAMU.
+  Escalas gearadas com a mesma fórmula de mistura do tailwind.config.js original.
+*/
+@theme {
+  --color-brand-50: #fbefee;
+  --color-brand-100: #f6dedc;
+  --color-brand-200: #efc6c3;
+  --color-brand-300: #e7a9a4;
+  --color-brand-400: #dd847d;
+  --color-brand-500: #c73227;
+  --color-brand-600: #af2c22;
+  --color-brand-700: #93251d;
+  --color-brand-800: #771e17;
+  --color-brand-900: #5c1712;
+
+  --color-accent-50: #fcf1ed;
+  --color-accent-100: #fae3dc;
+  --color-accent-200: #f6cdc2;
+  --color-accent-300: #f2b5a3;
+  --color-accent-400: #ec9584;
+  --color-accent-500: #df4e24;
+  --color-accent-600: #c44520;
+  --color-accent-700: #a53a1b;
+  --color-accent-800: #862f16;
+  --color-accent-900: #672411;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html,
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+body {
+  overscroll-behavior-y: none;
+}
+
+/* Marca d'água institucional — mesma linguagem do manual. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-color: rgb(199 50 39 / 0.03);
+  background-image: url("./assets/Samu192.png");
+  background-repeat: no-repeat;
+  background-position: 50% 42%;
+  background-size: min(68vmin, 520px);
+  opacity: 0.08;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+  min-height: 100dvh;
+}
+
+/* Toque mais confortável no mobile. */
+button {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/*
+  Animações em CSS puro (não dependem de rAF/JS): sempre completam e nunca
+  seguram a montagem do conteúdo — essencial no fluxo do checklist.
+*/
+@keyframes step-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pop-in {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.step-in {
+  animation: step-in 0.22s ease-out both;
+}
+
+.card-in {
+  animation: card-in 0.3s ease-out both;
+}
+
+.pop-in {
+  animation: pop-in 0.25s ease-out both;
+}
+
+.sheet-in {
+  animation: sheet-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.fade-in {
+  animation: fade-in 0.2s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .step-in,
+  .card-in,
+  .pop-in,
+  .sheet-in,
+  .fade-in {
+    animation: none;
+  }
+}

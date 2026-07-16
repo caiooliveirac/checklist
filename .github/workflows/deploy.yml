@@ -1,0 +1,92 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: checklist-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Typecheck, testes e build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Testes (server)
+        run: npm run test
+
+      - name: Build (web + server)
+        run: npm run build
+
+  deploy:
+    name: Deploy (rsync + canary swap)
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      REMOTE: ${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_SSH_HOST }}
+      DEPLOY_DIR: /home/ubuntu/checklist
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.PROD_SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Rsync source para o servidor
+        run: |
+          rsync -az --delete \
+            --exclude '.git' \
+            --exclude 'node_modules' \
+            --exclude 'dist' \
+            --exclude 'web/dist' \
+            --exclude 'server/dist' \
+            --exclude '.deploy-env' \
+            --exclude '.env*' \
+            -e "ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/id_ed25519" \
+            ./ ${{ env.REMOTE }}:${{ env.DEPLOY_DIR }}/
+
+      - name: Build + canary + swap no servidor
+        run: |
+          ssh -o ServerAliveInterval=20 -o ServerAliveCountMax=60 -i ~/.ssh/id_ed25519 \
+            ${{ env.REMOTE }} "bash ${{ env.DEPLOY_DIR }}/scripts/deploy.sh ${GITHUB_SHA::7}"
+
+      - name: Healthcheck público
+        run: |
+          code="$(curl -sk -o /tmp/health.json -w '%{http_code}' https://checklist.mnrs.com.br/api/health)"
+          cat /tmp/health.json || true
+          echo
+          echo "HTTP ${code}"
+          [ "${code}" = "200" ]
+
+      - name: Resumo
+        if: always()
+        run: |
+          {
+            echo "### Deploy checklist.mnrs.com.br"
+            echo "- Commit: ${GITHUB_SHA}"
+            echo "- Upstream local: http://127.0.0.1:3030/api/health"
+            echo "- Público: https://checklist.mnrs.com.br/api/health"
+          } >> "$GITHUB_STEP_SUMMARY"

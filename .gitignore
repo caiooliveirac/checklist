@@ -1,0 +1,19 @@
+# deps / builds
+node_modules/
+dist/
+web/dist/
+server/dist/
+
+# env & segredos — nunca commitar
+.env
+.env.*
+!.env.example
+.deploy-env
+*.pem
+*.key
+
+# logs e temporários
+*.log
+.DS_Store
+*.tsbuildinfo
+coverage/
