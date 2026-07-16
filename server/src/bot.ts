@@ -5,6 +5,7 @@ import { bahiaDay, bahiaDayLabel, bahiaTime } from "./day.js";
 import { collectDigestData, renderDigestMessage, alreadySent, logDigest } from "./digest.js";
 import { getChecklistDef, itemByKey } from "./checklist-def.js";
 import { getBoard, type OnDuty } from "./plantoes.js";
+import { materialButtons, materialHistoryText, recentMissing, missingSummaryText, HISTORY_DAYS } from "./history.js";
 import { latestByBase, type DaySubmission } from "./submissions.js";
 import type { StoredSubmission } from "./submissions.js";
 
@@ -21,6 +22,8 @@ const BTN_PENDING = "⚠️ Pendentes";
 const BTN_MISSING = "🚫 Faltas";
 const BTN_OBS = "📝 Observações";
 const BTN_UNITS = "🚑 Por unidade";
+const BTN_MATERIAL = "🔎 Buscar material";
+const BTN_RECENT = "📉 Faltas recentes";
 
 const keyboard = new Keyboard()
   .text(BTN_STATUS)
@@ -30,6 +33,9 @@ const keyboard = new Keyboard()
   .row()
   .text(BTN_OBS)
   .text(BTN_UNITS)
+  .row()
+  .text(BTN_MATERIAL)
+  .text(BTN_RECENT)
   .resized()
   .persistent();
 
@@ -42,6 +48,8 @@ const HELP_TEXT = [
   "• /obs — todas as observações registradas hoje, por unidade",
   "• /unidades — detalhe de uma USA específica (botões)",
   "• /usa SM01 — detalhe direto de uma unidade",
+  "• /material — histórico de um material: quem reportou presente/faltando nos últimos dias",
+  "• /sumidos — itens que faltaram nos últimos dias, por ambulância",
   "",
   "Os resumos automáticos chegam às <b>11h</b> e <b>13h</b>, e cada checklist concluído gera aviso na hora.",
 ].join("\n");
@@ -249,13 +257,22 @@ async function textUnidade(code: string): Promise<string> {
   return lines.join("\n");
 }
 
-async function unidadesKeyboard(): Promise<InlineKeyboard> {
+async function unidadesKeyboard(prefix: string): Promise<InlineKeyboard> {
   const { board, subs } = await dayData();
   const kb = new InlineKeyboard();
   board.forEach((b, i) => {
     const done = subs.has(b.baseCode);
-    kb.text(`${done ? "✅" : "⚠️"} ${b.baseCode}`, `base:${b.baseCode}`);
+    kb.text(`${done ? "✅" : "⚠️"} ${b.baseCode}`, `${prefix}:${b.baseCode}`);
     if (i % 3 === 2) kb.row();
+  });
+  return kb;
+}
+
+function materialsKeyboard(code: string): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  materialButtons().forEach((m, i) => {
+    kb.text(m.label, `mh:${code}:${m.key}`);
+    if (i % 2 === 1) kb.row();
   });
   return kb;
 }
@@ -324,7 +341,19 @@ export function createBot(): Bot | null {
     await ctx.reply(await textObservacoes(), REPLY_OPTS);
   };
   const cmdUnidades = async (ctx: Context): Promise<void> => {
-    await ctx.reply("Escolha a unidade (✅ fez · ⚠️ pendente):", { reply_markup: await unidadesKeyboard() });
+    await ctx.reply("Escolha a unidade (✅ fez · ⚠️ pendente):", { reply_markup: await unidadesKeyboard("base") });
+  };
+  const cmdMaterial = async (ctx: Context): Promise<void> => {
+    await ctx.reply("🔎 <b>Buscar material</b> — primeiro, qual ambulância?", {
+      parse_mode: "HTML",
+      reply_markup: await unidadesKeyboard("mhu"),
+    });
+  };
+  const cmdSumidos = async (ctx: Context): Promise<void> => {
+    await ctx.reply(`📉 <b>Faltas dos últimos ${HISTORY_DAYS} dias</b> — qual ambulância?`, {
+      parse_mode: "HTML",
+      reply_markup: await unidadesKeyboard("su"),
+    });
   };
 
   const protect =
@@ -343,6 +372,10 @@ export function createBot(): Bot | null {
   bot.hears(BTN_OBS, protect(cmdObs));
   bot.command("unidades", protect(cmdUnidades));
   bot.hears(BTN_UNITS, protect(cmdUnidades));
+  bot.command("material", protect(cmdMaterial));
+  bot.hears(BTN_MATERIAL, protect(cmdMaterial));
+  bot.command("sumidos", protect(cmdSumidos));
+  bot.hears(BTN_RECENT, protect(cmdSumidos));
 
   bot.command("usa", protect(async (ctx) => {
     const code = (typeof ctx.match === "string" ? ctx.match : "").trim();
@@ -358,6 +391,44 @@ export function createBot(): Bot | null {
     if (!ctx.chat || !(await isAdmin(ctx.chat.id))) return;
     const code = ctx.match?.[1] ?? "";
     await ctx.reply(await textUnidade(code), REPLY_OPTS);
+  });
+
+  // Etapa 2 do /material: ambulância escolhida → qual material?
+  bot.callbackQuery(/^mhu:(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    if (!ctx.chat || !(await isAdmin(ctx.chat.id))) return;
+    const code = (ctx.match?.[1] ?? "").toUpperCase();
+    await ctx.reply(`🚑 <b>${code}</b> — agora, qual material você procura?`, {
+      parse_mode: "HTML",
+      reply_markup: materialsKeyboard(code),
+    });
+  });
+
+  // Etapa 3 do /material: histórico do item na unidade.
+  bot.callbackQuery(/^mh:([^:]+):(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    if (!ctx.chat || !(await isAdmin(ctx.chat.id))) return;
+    const code = ctx.match?.[1] ?? "";
+    const key = ctx.match?.[2] ?? "";
+    await ctx.reply(await materialHistoryText(code, key), REPLY_OPTS);
+  });
+
+  // /sumidos: faltas recentes da unidade, itens clicáveis para o histórico.
+  bot.callbackQuery(/^su:(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    if (!ctx.chat || !(await isAdmin(ctx.chat.id))) return;
+    const code = (ctx.match?.[1] ?? "").toUpperCase();
+    const data = await recentMissing(code);
+    const kb = new InlineKeyboard();
+    data.missing.forEach((m, i) => {
+      kb.text(`🚫 ${m.label}`, `mh:${code}:${m.key}`);
+      if (i % 2 === 1) kb.row();
+    });
+    await ctx.reply(missingSummaryText(code, data), {
+      parse_mode: "HTML",
+      link_preview_options: { is_disabled: true },
+      reply_markup: data.missing.length > 0 ? kb : keyboard,
+    });
   });
 
   bot.command("ajuda", protect(async (ctx) => {
@@ -392,6 +463,8 @@ export function createBot(): Bot | null {
       { command: "faltas", description: "Inconformidades por unidade" },
       { command: "obs", description: "Observações do dia por unidade" },
       { command: "unidades", description: "Detalhe de uma USA específica" },
+      { command: "material", description: "Histórico de um material (quem reportou)" },
+      { command: "sumidos", description: "Faltas dos últimos dias por ambulância" },
       { command: "ajuda", description: "Guia de comandos" },
     ])
     .catch((err) => console.error("[bot] setMyCommands falhou:", err));
