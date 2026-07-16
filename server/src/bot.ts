@@ -1,23 +1,50 @@
-import { Bot, Keyboard, type Context } from "grammy";
+import { Bot, InlineKeyboard, Keyboard, type Context } from "grammy";
 import { config } from "./config.js";
 import { db } from "./db.js";
-import { bahiaDay, bahiaTime } from "./day.js";
+import { bahiaDay, bahiaDayLabel, bahiaTime } from "./day.js";
 import { collectDigestData, renderDigestMessage, alreadySent, logDigest } from "./digest.js";
 import { getChecklistDef, itemByKey } from "./checklist-def.js";
+import { getBoard, type OnDuty } from "./plantoes.js";
+import { latestByBase, type DaySubmission } from "./submissions.js";
 import type { StoredSubmission } from "./submissions.js";
 
 /**
- * Bot @samu_checklists_bot — canal do admin:
+ * Bot @samu_checklists_bot — canal do coordenador:
  *  - aviso imediato quando uma USA conclui o checklist;
  *  - digest agendado (11h/13h) com quem fez / não fez + contato do plantonista;
- *  - comandos guiados no chat (/status, /pendentes, /faltas) com teclado fixo.
+ *  - comandos guiados: status geral, pendentes, inconformidades, observações
+ *    e compilação por unidade. Qualquer mensagem de um admin recebe o guia.
  */
 
 const BTN_STATUS = "📋 Status de hoje";
 const BTN_PENDING = "⚠️ Pendentes";
-const BTN_MISSING = "🚫 Itens faltando";
+const BTN_MISSING = "🚫 Faltas";
+const BTN_OBS = "📝 Observações";
+const BTN_UNITS = "🚑 Por unidade";
 
-const keyboard = new Keyboard().text(BTN_STATUS).row().text(BTN_PENDING).text(BTN_MISSING).resized().persistent();
+const keyboard = new Keyboard()
+  .text(BTN_STATUS)
+  .row()
+  .text(BTN_PENDING)
+  .text(BTN_MISSING)
+  .row()
+  .text(BTN_OBS)
+  .text(BTN_UNITS)
+  .resized()
+  .persistent();
+
+const HELP_TEXT = [
+  "🤖 <b>Bot do Checklist USA</b> — comandos:",
+  "",
+  "• /status — situação completa de hoje (quem fez / não fez)",
+  "• /pendentes — só quem ainda não fez, com o plantonista para cobrar",
+  "• /faltas — inconformidades (itens faltando) compiladas por unidade",
+  "• /obs — todas as observações registradas hoje, por unidade",
+  "• /unidades — detalhe de uma USA específica (botões)",
+  "• /usa SM01 — detalhe direto de uma unidade",
+  "",
+  "Os resumos automáticos chegam às <b>11h</b> e <b>13h</b>, e cada checklist concluído gera aviso na hora.",
+].join("\n");
 
 let bot: Bot | null = null;
 
@@ -42,6 +69,12 @@ async function isAdmin(chatId: string | number): Promise<boolean> {
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
+
+const REPLY_OPTS = {
+  parse_mode: "HTML" as const,
+  link_preview_options: { is_disabled: true },
+  reply_markup: keyboard,
+};
 
 async function sendToAdmins(text: string): Promise<string[]> {
   if (!bot) return [];
@@ -97,14 +130,139 @@ export async function sendDigest(slot: string, opts: { force?: boolean } = {}): 
   }
 }
 
-async function replyStatus(ctx: Context): Promise<void> {
-  const data = await collectDigestData();
-  await ctx.reply(renderDigestMessage(data, `consulta ${bahiaTime(new Date())}`), {
-    parse_mode: "HTML",
-    link_preview_options: { is_disabled: true },
-    reply_markup: keyboard,
-  });
+function doctorRef(base: OnDuty): string {
+  const name = base.displayName ?? base.doctorName;
+  if (!name) return "<i>sem médico registrado</i>";
+  const label = base.telegramUserId
+    ? `<a href="tg://user?id=${base.telegramUserId}">${esc(name)}</a>`
+    : `<b>${esc(name)}</b>`;
+  return base.shiftLabel ? `${label} (${esc(base.shiftLabel)})` : label;
 }
+
+/* ------------------------------------------------------------------ */
+/* Compilações                                                         */
+/* ------------------------------------------------------------------ */
+
+interface DayData {
+  board: OnDuty[];
+  subs: Map<string, DaySubmission>;
+}
+
+async function dayData(): Promise<DayData> {
+  const [{ board }, subs] = await Promise.all([getBoard(), latestByBase(bahiaDay())]);
+  return { board, subs };
+}
+
+async function textPendentes(): Promise<string> {
+  const data = await collectDigestData();
+  const total = data.done.length + data.pending.length;
+  if (data.pending.length === 0) {
+    return `🎉 Todas as ${total} USAs enviaram o checklist hoje (${esc(data.dayLabel)}).`;
+  }
+  const lines = [`⚠️ <b>Pendentes (${data.pending.length}/${total})</b> — ${esc(data.dayLabel)}:`];
+  for (const base of data.pending) {
+    lines.push(`• <b>${esc(base.baseCode)}</b> — ${doctorRef(base)}`);
+  }
+  lines.push("", "Toque no nome para abrir o contato e cobrar. 😉");
+  return lines.join("\n");
+}
+
+/** Inconformidades (itens faltando) compiladas por unidade. */
+async function textFaltas(): Promise<string> {
+  const { subs } = await dayData();
+  const def = getChecklistDef();
+  const withMissing = [...subs.values()].filter((s) => s.missingCount > 0);
+  if (withMissing.length === 0) {
+    return `✨ Nenhuma inconformidade reportada hoje (${bahiaDayLabel()}).`;
+  }
+  const lines = [`🚫 <b>Inconformidades de hoje</b> — ${esc(bahiaDayLabel())}:`];
+  for (const sub of withMissing) {
+    lines.push(`\n<b>${esc(sub.baseCode)}</b> — ${esc(sub.doctorName)} (${bahiaTime(new Date(sub.createdAt))}):`);
+    for (const item of sub.items.filter((i) => i.state === "missing")) {
+      const label = itemByKey(def, item.key)?.shortLabel ?? item.key;
+      lines.push(`• ${esc(label)}${item.obs ? ` — <i>${esc(item.obs)}</i>` : ""}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+/** Todas as observações do dia (inclusive de itens conformes), por unidade. */
+async function textObservacoes(): Promise<string> {
+  const { subs } = await dayData();
+  const def = getChecklistDef();
+  const withObs = [...subs.values()]
+    .map((sub) => ({ sub, obsItems: sub.items.filter((i) => i.obs) }))
+    .filter((x) => x.obsItems.length > 0);
+  if (withObs.length === 0) {
+    return `📝 Nenhuma observação registrada hoje (${bahiaDayLabel()}).`;
+  }
+  const lines = [`📝 <b>Observações de hoje</b> — ${esc(bahiaDayLabel())}:`];
+  for (const { sub, obsItems } of withObs) {
+    lines.push(`\n<b>${esc(sub.baseCode)}</b> — ${esc(sub.doctorName)}:`);
+    for (const item of obsItems) {
+      const label = itemByKey(def, item.key)?.shortLabel ?? item.key;
+      const mark = item.state === "missing" ? "🚫" : "✅";
+      lines.push(`${mark} ${esc(label)} — <i>${esc(item.obs ?? "")}</i>`);
+    }
+  }
+  return lines.join("\n");
+}
+
+/** Compilação completa de uma unidade. */
+async function textUnidade(code: string): Promise<string> {
+  const { board, subs } = await dayData();
+  const def = getChecklistDef();
+  const base = board.find((b) => b.baseCode === code.toUpperCase());
+  if (!base) {
+    const valid = board.map((b) => b.baseCode).join(", ");
+    return `Unidade "${esc(code)}" não encontrada. Válidas: ${valid}`;
+  }
+  const sub = subs.get(base.baseCode);
+  const lines = [`🚑 <b>${esc(base.baseCode)}</b> — ${esc(bahiaDayLabel())}`];
+  lines.push(`👨‍⚕️ Plantão: ${doctorRef(base)}${base.startedAt ? ` · desde ${bahiaTime(new Date(base.startedAt))}` : ""}`);
+  lines.push("");
+  if (!sub) {
+    lines.push("⚠️ <b>Checklist de hoje ainda não enviado.</b>");
+    lines.push("Toque no nome acima para abrir o contato e cobrar.");
+    return lines.join("\n");
+  }
+  lines.push(`✅ Checklist enviado às <b>${bahiaTime(new Date(sub.createdAt))}</b> por ${esc(sub.doctorName)}`);
+  lines.push(`Conformes: ${sub.okCount}/${sub.totalItems}`);
+  const missing = sub.items.filter((i) => i.state === "missing");
+  if (missing.length > 0) {
+    lines.push(`\n🚫 <b>Faltando (${missing.length}):</b>`);
+    for (const item of missing) {
+      const label = itemByKey(def, item.key)?.shortLabel ?? item.key;
+      lines.push(`• ${esc(label)}${item.obs ? ` — <i>${esc(item.obs)}</i>` : ""}`);
+    }
+  } else {
+    lines.push("\nTudo conforme ✨");
+  }
+  const okObs = sub.items.filter((i) => i.state === "ok" && i.obs);
+  if (okObs.length > 0) {
+    lines.push(`\n📝 <b>Observações:</b>`);
+    for (const item of okObs) {
+      const label = itemByKey(def, item.key)?.shortLabel ?? item.key;
+      lines.push(`• ${esc(label)} — <i>${esc(item.obs ?? "")}</i>`);
+    }
+  }
+  return lines.join("\n");
+}
+
+async function unidadesKeyboard(): Promise<InlineKeyboard> {
+  const { board, subs } = await dayData();
+  const kb = new InlineKeyboard();
+  board.forEach((b, i) => {
+    const done = subs.has(b.baseCode);
+    kb.text(`${done ? "✅" : "⚠️"} ${b.baseCode}`, `base:${b.baseCode}`);
+    if (i % 3 === 2) kb.row();
+  });
+  return kb;
+}
+
+/* ------------------------------------------------------------------ */
+/* Handlers                                                            */
+/* ------------------------------------------------------------------ */
 
 export function createBot(): Bot | null {
   if (!config.telegram.token || config.telegram.mode === "disabled") {
@@ -114,22 +272,17 @@ export function createBot(): Bot | null {
 
   bot = new Bot(config.telegram.token);
 
+  const guard = async (ctx: Context): Promise<boolean> => {
+    if (ctx.chat && (await isAdmin(ctx.chat.id))) return true;
+    await ctx.reply(
+      "Este é o bot administrativo do Checklist USA (checklist.mnrs.com.br).\nSe você é da coordenação, use /admin <código> para se registrar.",
+    );
+    return false;
+  };
+
   bot.command("start", async (ctx) => {
-    const admin = await isAdmin(ctx.chat.id);
-    if (admin) {
-      await ctx.reply(
-        [
-          "👋 <b>Bot do Checklist USA</b>",
-          "",
-          "Você recebe aqui os avisos de checklist concluído e o resumo automático de 11h e 13h.",
-          "",
-          "Comandos:",
-          "• /status — situação completa de hoje",
-          "• /pendentes — só quem ainda não fez",
-          "• /faltas — itens faltando reportados",
-        ].join("\n"),
-        { parse_mode: "HTML", reply_markup: keyboard },
-      );
+    if (await isAdmin(ctx.chat.id)) {
+      await ctx.reply(`👋 Bem-vindo!\n\n${HELP_TEXT}`, REPLY_OPTS);
     } else {
       await ctx.reply(
         [
@@ -154,84 +307,72 @@ export function createBot(): Bot | null {
        ON CONFLICT (chat_id) DO UPDATE SET role = 'admin', label = EXCLUDED.label`,
       [String(ctx.chat.id), label],
     );
-    await ctx.reply("✅ Registrado! Você passa a receber os avisos e resumos do checklist.", {
-      reply_markup: keyboard,
-    });
+    await ctx.reply(`✅ Registrado! Você passa a receber os avisos e resumos.\n\n${HELP_TEXT}`, REPLY_OPTS);
   });
 
-  const guard = async (ctx: Context): Promise<boolean> => {
-    if (ctx.chat && (await isAdmin(ctx.chat.id))) return true;
-    await ctx.reply("Sem acesso — bot administrativo. Use /admin <código> se você é da coordenação.");
-    return false;
+  const cmdStatus = async (ctx: Context): Promise<void> => {
+    const data = await collectDigestData();
+    await ctx.reply(renderDigestMessage(data, `consulta ${bahiaTime(new Date())}`), REPLY_OPTS);
+  };
+  const cmdPendentes = async (ctx: Context): Promise<void> => {
+    await ctx.reply(await textPendentes(), REPLY_OPTS);
+  };
+  const cmdFaltas = async (ctx: Context): Promise<void> => {
+    await ctx.reply(await textFaltas(), REPLY_OPTS);
+  };
+  const cmdObs = async (ctx: Context): Promise<void> => {
+    await ctx.reply(await textObservacoes(), REPLY_OPTS);
+  };
+  const cmdUnidades = async (ctx: Context): Promise<void> => {
+    await ctx.reply("Escolha a unidade (✅ fez · ⚠️ pendente):", { reply_markup: await unidadesKeyboard() });
   };
 
-  bot.command("status", async (ctx) => {
-    if (await guard(ctx)) await replyStatus(ctx);
-  });
-  bot.hears(BTN_STATUS, async (ctx) => {
-    if (await guard(ctx)) await replyStatus(ctx);
-  });
+  const protect =
+    (fn: (ctx: Context) => Promise<void>) =>
+    async (ctx: Context): Promise<void> => {
+      if (await guard(ctx)) await fn(ctx);
+    };
 
-  const pendentes = async (ctx: Context): Promise<void> => {
-    const data = await collectDigestData();
-    const total = data.done.length + data.pending.length;
-    if (data.pending.length === 0) {
-      await ctx.reply(`🎉 Todas as ${total} USAs enviaram o checklist hoje.`, { reply_markup: keyboard });
+  bot.command("status", protect(cmdStatus));
+  bot.hears(BTN_STATUS, protect(cmdStatus));
+  bot.command("pendentes", protect(cmdPendentes));
+  bot.hears(BTN_PENDING, protect(cmdPendentes));
+  bot.command("faltas", protect(cmdFaltas));
+  bot.hears(BTN_MISSING, protect(cmdFaltas));
+  bot.command("obs", protect(cmdObs));
+  bot.hears(BTN_OBS, protect(cmdObs));
+  bot.command("unidades", protect(cmdUnidades));
+  bot.hears(BTN_UNITS, protect(cmdUnidades));
+
+  bot.command("usa", protect(async (ctx) => {
+    const code = (typeof ctx.match === "string" ? ctx.match : "").trim();
+    if (!code) {
+      await cmdUnidades(ctx);
       return;
     }
-    const lines = [`⚠️ <b>Pendentes (${data.pending.length}/${total})</b> — ${esc(data.dayLabel)}:`];
-    for (const base of data.pending) {
-      const name = base.displayName ?? base.doctorName;
-      const who = name
-        ? base.telegramUserId
-          ? `<a href="tg://user?id=${base.telegramUserId}">${esc(name)}</a>`
-          : `<b>${esc(name)}</b>`
-        : "<i>sem médico registrado</i>";
-      const shift = base.shiftLabel ? ` (${esc(base.shiftLabel)})` : "";
-      lines.push(`• <b>${esc(base.baseCode)}</b> — ${who}${shift}`);
-    }
-    await ctx.reply(lines.join("\n"), {
-      parse_mode: "HTML",
-      link_preview_options: { is_disabled: true },
-      reply_markup: keyboard,
-    });
-  };
-  bot.command("pendentes", async (ctx) => {
-    if (await guard(ctx)) await pendentes(ctx);
-  });
-  bot.hears(BTN_PENDING, async (ctx) => {
-    if (await guard(ctx)) await pendentes(ctx);
+    await ctx.reply(await textUnidade(code), REPLY_OPTS);
+  }));
+
+  bot.callbackQuery(/^base:(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    if (!ctx.chat || !(await isAdmin(ctx.chat.id))) return;
+    const code = ctx.match?.[1] ?? "";
+    await ctx.reply(await textUnidade(code), REPLY_OPTS);
   });
 
-  const faltas = async (ctx: Context): Promise<void> => {
-    const data = await collectDigestData();
-    const withMissing = data.done.filter((d) => d.sub.missingCount > 0);
-    if (withMissing.length === 0) {
-      await ctx.reply("✨ Nenhum item faltando reportado nos checklists de hoje.", { reply_markup: keyboard });
-      return;
-    }
-    const def = getChecklistDef();
-    const lines = ["🚫 <b>Itens faltando reportados hoje:</b>"];
-    for (const { base, sub } of withMissing) {
-      lines.push(`\n<b>${esc(base.baseCode)}</b> — ${esc(sub.doctorName)}:`);
-      for (const item of sub.items.filter((i) => i.state === "missing")) {
-        const label = itemByKey(def, item.key)?.shortLabel ?? item.key;
-        lines.push(`• ${esc(label)}${item.obs ? ` — <i>${esc(item.obs)}</i>` : ""}`);
-      }
-    }
-    await ctx.reply(lines.join("\n"), { parse_mode: "HTML", reply_markup: keyboard });
-  };
-  bot.command("faltas", async (ctx) => {
-    if (await guard(ctx)) await faltas(ctx);
-  });
-  bot.hears(BTN_MISSING, async (ctx) => {
-    if (await guard(ctx)) await faltas(ctx);
-  });
+  bot.command("ajuda", protect(async (ctx) => {
+    await ctx.reply(HELP_TEXT, REPLY_OPTS);
+  }));
 
-  bot.command("ajuda", async (ctx) => {
-    await ctx.reply("Comandos: /status · /pendentes · /faltas — resumos automáticos às 11h e 13h.", {
-      reply_markup: keyboard,
-    });
+  // Fallback: QUALQUER outra mensagem de um admin recebe o guia de comandos.
+  bot.on("message:text", async (ctx) => {
+    if (await isAdmin(ctx.chat.id)) {
+      await ctx.reply(`Não entendi. 🙂\n\n${HELP_TEXT}`, REPLY_OPTS);
+    } else {
+      await ctx.reply(
+        "Este é o bot administrativo do Checklist USA (checklist.mnrs.com.br).\nSe você é da coordenação, use /admin <código> para se registrar.",
+      );
+    }
   });
 
   bot.catch((err) => {
@@ -242,6 +383,18 @@ export function createBot(): Bot | null {
     drop_pending_updates: true,
     onStart: (me) => console.log(`[bot] @${me.username} em long polling`),
   });
+
+  // Menu de comandos no cliente do Telegram (aparece ao digitar "/").
+  void bot.api
+    .setMyCommands([
+      { command: "status", description: "Situação completa de hoje" },
+      { command: "pendentes", description: "Quem ainda não fez (com contato)" },
+      { command: "faltas", description: "Inconformidades por unidade" },
+      { command: "obs", description: "Observações do dia por unidade" },
+      { command: "unidades", description: "Detalhe de uma USA específica" },
+      { command: "ajuda", description: "Guia de comandos" },
+    ])
+    .catch((err) => console.error("[bot] setMyCommands falhou:", err));
 
   return bot;
 }
