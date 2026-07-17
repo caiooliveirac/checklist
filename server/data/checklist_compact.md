@@ -36,12 +36,6 @@ REGRAS:
 - [ ] Cabos/Base(Vídeo)
 - [ ] Lâminas(Vídeo)
 
-## 4. HEMOGASÔMETRO I-STAT
-
-- [ ] Gasômetro
-- [ ] Baterias/Seringas Gaso
-- [ ] Cartuchos Gaso
-
 ## 5. MOCHILA PEDIÁTRICA
 
 - [ ] Lacre

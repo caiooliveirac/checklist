@@ -191,6 +191,28 @@ export interface DaySubmission {
   items: AnsweredItem[];
 }
 
+/**
+ * Valores de campos (lacre/datas) da submissão mais recente de cada base
+ * (qualquer dia, janela de 60 dias) — herdados como pré-preenchimento.
+ */
+export async function lastFieldValues(): Promise<Map<string, Record<string, string>>> {
+  const { rows } = await db.query(
+    `SELECT DISTINCT ON (base_code) base_code, items
+     FROM submissions
+     WHERE created_at > now() - interval '60 days'
+     ORDER BY base_code, created_at DESC`,
+  );
+  const map = new Map<string, Record<string, string>>();
+  for (const r of rows) {
+    const fields: Record<string, string> = {};
+    for (const item of Array.isArray(r.items) ? (r.items as AnsweredItem[]) : []) {
+      if (item.value) fields[item.key] = item.value;
+    }
+    if (Object.keys(fields).length > 0) map.set(String(r.base_code), fields);
+  }
+  return map;
+}
+
 /** Última submissão de cada base no dia (a que vale para o status). */
 export async function latestByBase(day: string): Promise<Map<string, DaySubmission>> {
   const { rows } = await db.query(

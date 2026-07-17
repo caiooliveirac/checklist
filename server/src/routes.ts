@@ -3,7 +3,9 @@ import { db } from "./db.js";
 import { getChecklistDef } from "./checklist-def.js";
 import { getBoard, plantoesHealthy } from "./plantoes.js";
 import { bahiaDay, bahiaDayLabel } from "./day.js";
-import { createSubmission, latestByBase, ValidationError, type AnsweredItem } from "./submissions.js";
+import { createSubmission, latestByBase, lastFieldValues, ValidationError, type AnsweredItem } from "./submissions.js";
+import { recentHistory, HISTORY_DAYS } from "./history.js";
+import { itemByKey } from "./checklist-def.js";
 import { notifySubmission } from "./bot.js";
 import { hashIp } from "./text.js";
 import { config } from "./config.js";
@@ -41,7 +43,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/api/board", async () => {
     const day = bahiaDay();
-    const [{ board, degraded }, subs] = await Promise.all([getBoard(), latestByBase(day)]);
+    const [{ board, degraded }, subs, fields] = await Promise.all([getBoard(), latestByBase(day), lastFieldValues()]);
     return {
       day,
       dayLabel: bahiaDayLabel(),
@@ -49,6 +51,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       bases: board.map((b) => {
         const sub = subs.get(b.baseCode) ?? null;
         return {
+          lastFields: fields.get(b.baseCode) ?? {},
           code: b.baseCode,
           doctorId: b.doctorId,
           doctorName: b.displayName ?? b.doctorName,
@@ -69,6 +72,66 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
             : null,
         };
       }),
+    };
+  });
+
+  // Histórico da unidade para a UI: checklists recentes + alertas do plantão
+  // anterior (o que está faltando e desde quando, e observações registradas).
+  app.get("/api/history/:code", async (req) => {
+    const { code } = req.params as { code: string };
+    const def = getChecklistDef();
+    const history = await recentHistory(code);
+
+    const days = history.map((h) => {
+      const missing = h.items
+        .filter((i) => i.state === "missing")
+        .map((i) => ({ key: i.key, label: itemByKey(def, i.key)?.shortLabel ?? i.key, obs: i.obs ?? null }));
+      const obs = h.items
+        .filter((i) => i.state === "ok" && i.obs)
+        .map((i) => ({ key: i.key, label: itemByKey(def, i.key)?.shortLabel ?? i.key, obs: i.obs ?? null }));
+      const values = h.items
+        .filter((i) => i.value)
+        .map((i) => ({ key: i.key, label: itemByKey(def, i.key)?.shortLabel ?? i.key, value: i.value ?? "" }));
+      return {
+        day: h.day,
+        doctorName: h.doctorName,
+        createdAt: h.createdAt.toISOString(),
+        okCount: h.items.filter((i) => i.state === "ok").length,
+        missingCount: missing.length,
+        missing,
+        obs,
+        values,
+      };
+    });
+
+    // Alertas: itens faltando no checklist MAIS RECENTE, com "desde quando"
+    // (dia mais antigo da sequência de faltas dentro da janela).
+    const latest = history[0];
+    const alerts: { key: string; label: string; sinceDay: string; obs: string | null }[] = [];
+    if (latest) {
+      for (const item of latest.items.filter((i) => i.state === "missing")) {
+        let sinceDay = latest.day;
+        let obs: string | null = item.obs ?? null;
+        for (const h of history.slice(1)) {
+          const past = h.items.find((i) => i.key === item.key);
+          if (past?.state !== "missing") break;
+          sinceDay = h.day;
+          if (!obs && past.obs) obs = past.obs;
+        }
+        alerts.push({ key: item.key, label: itemByKey(def, item.key)?.shortLabel ?? item.key, sinceDay, obs });
+      }
+    }
+
+    return {
+      code: code.toUpperCase(),
+      windowDays: HISTORY_DAYS,
+      days,
+      alerts,
+      latestObs: latest
+        ? latest.items
+            .filter((i) => i.obs && i.state === "ok")
+            .map((i) => ({ label: itemByKey(def, i.key)?.shortLabel ?? i.key, obs: i.obs ?? "" }))
+        : [],
     };
   });
 

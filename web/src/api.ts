@@ -8,6 +8,7 @@ export interface ChecklistItemDef {
   shortLabel: string;
   kind: "check" | "text" | "date";
   hint?: string;
+  autoDefault?: "today" | "tomorrow";
 }
 
 export interface ChecklistGroupDef {
@@ -32,6 +33,7 @@ export interface BoardSubmission {
 }
 
 export interface BoardBase {
+  lastFields: Record<string, string>;
   code: string;
   doctorId: string | null;
   doctorName: string | null;
@@ -63,9 +65,48 @@ async function getJson<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+export interface HistoryItemRef {
+  key: string;
+  label: string;
+  obs: string | null;
+}
+
+export interface HistoryDay {
+  day: string;
+  doctorName: string;
+  createdAt: string;
+  okCount: number;
+  missingCount: number;
+  missing: HistoryItemRef[];
+  obs: HistoryItemRef[];
+  values: { key: string; label: string; value: string }[];
+}
+
+export interface BaseHistory {
+  code: string;
+  windowDays: number;
+  days: HistoryDay[];
+  alerts: { key: string; label: string; sinceDay: string; obs: string | null }[];
+  latestObs: { label: string; obs: string }[];
+}
+
+/** "2026-07-16" → "16/07". */
+export function dayLabel(day: string): string {
+  const [, m, d] = day.split("-");
+  return `${d}/${m}`;
+}
+
+/** Data local (YYYY-MM-DD) com deslocamento em dias — para defaults de campos. */
+export function localDay(offsetDays = 0): string {
+  const d = new Date(Date.now() + offsetDays * 86_400_000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 export const api = {
   board: () => getJson<Board>("/api/board"),
   checklist: () => getJson<ChecklistDef>("/api/checklist"),
+  history: (code: string) => getJson<BaseHistory>(`/api/history/${encodeURIComponent(code)}`),
   submit: async (payload: {
     baseCode: string;
     doctorName: string;

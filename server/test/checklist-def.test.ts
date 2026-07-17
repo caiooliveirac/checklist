@@ -11,11 +11,18 @@ const compact = readFileSync(path.join(DATA, "checklist_compact.md"), "utf8");
 describe("buildDef", () => {
   it("parseia todos os grupos e itens do checklist USA", () => {
     const def = buildDef(full, compact);
-    expect(def.groups.length).toBe(9); // 8 grupos + subgrupo 5.1
-    expect(def.totalItems).toBe(40);
+    expect(def.groups.length).toBe(8); // 7 seções + subgrupo 5.1 (a 4 foi removida)
+    expect(def.totalItems).toBe(37);
     const titles = def.groups.map((g) => g.title);
     expect(titles[0]).toBe("COMUNICAÇÃO");
     expect(titles).toContain("MOCHILA PEDIÁTRICA");
+    expect(titles.join(" ")).not.toMatch(/HEMOGAS/i);
+  });
+
+  it("deriva chaves do número do heading (estáveis a remoções)", () => {
+    const def = buildDef(full, compact);
+    expect(def.groups.map((g) => g.key)).toEqual(["g1", "g2", "g3", "g5", "g5.1", "g6", "g7", "g8"]);
+    expect(def.groups.find((g) => g.key === "g5.1")!.items[0]!.key).toBe("g5.1i1");
   });
 
   it("usa rótulos curtos do compact quando em sincronia", () => {
@@ -25,15 +32,16 @@ describe("buildDef", () => {
     expect(first.kind).toBe("check");
   });
 
-  it("detecta campos de lacre e datas", () => {
+  it("detecta campos de lacre e datas com defaults automáticos", () => {
     const def = buildDef(full, compact);
     const ped = def.groups.find((g) => g.title === "MOCHILA PEDIÁTRICA")!;
     expect(ped.items.map((i) => i.kind)).toEqual(["text", "date", "date"]);
+    expect(ped.items.map((i) => i.autoDefault)).toEqual([undefined, "today", "tomorrow"]);
   });
 
   it("cai para heurística quando compact está fora de sincronia", () => {
     const def = buildDef(full, "## 1. X\n\n- [ ] Só um item\n");
-    expect(def.totalItems).toBe(40);
+    expect(def.totalItems).toBe(37);
     const first = def.groups[0]!.items[0]!;
     expect(first.shortLabel.length).toBeLessThanOrEqual(35);
   });

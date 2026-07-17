@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ClipboardList,
+  History,
   Loader2,
   PartyPopper,
   Send,
@@ -18,8 +19,11 @@ import {
 import clsx from "clsx";
 import {
   api,
+  dayLabel,
+  localDay,
   timeLabel,
   type AnsweredItem,
+  type BaseHistory,
   type Board,
   type BoardBase,
   type ChecklistDef,
@@ -27,6 +31,7 @@ import {
 } from "../api";
 import { ItemRow } from "../components/ItemRow";
 import { ObsSheet } from "../components/ObsSheet";
+import { HistoryModal } from "../components/HistoryModal";
 
 type Phase = { kind: "intro" } | { kind: "group"; index: number } | { kind: "review" } | { kind: "done" };
 
@@ -65,6 +70,8 @@ export default function ChecklistPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [doneAt, setDoneAt] = useState<string | null>(null);
+  const [history, setHistory] = useState<BaseHistory | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const hydrated = useRef(false);
 
   useEffect(() => {
@@ -74,24 +81,35 @@ export default function ChecklistPage() {
         setBoard(b);
       })
       .catch(() => setLoadError(true));
-  }, []);
+    api.history(baseCode).then(setHistory).catch(() => setHistory(null));
+  }, [baseCode]);
 
   const base: BoardBase | null = useMemo(
     () => board?.bases.find((b) => b.code === baseCode) ?? null,
     [board, baseCode],
   );
 
-  // Hidrata rascunho do dia (se houver) e pré-preenche o nome do plantonista.
+  // Hidrata rascunho do dia, pré-preenche nome do plantonista e os campos de
+  // lacre/datas (valor herdado do último checklist ou default hoje/amanhã).
   useEffect(() => {
-    if (!board || hydrated.current) return;
+    if (!board || !def || hydrated.current) return;
     hydrated.current = true;
     const draft = loadDraft(board.day, baseCode);
-    if (draft) {
-      setAnswers(draft.answers ?? {});
-      if (draft.doctorName) setDoctorName(draft.doctorName);
+    const initial: Record<string, AnsweredItem> = { ...(draft?.answers ?? {}) };
+    for (const g of def.groups) {
+      for (const item of g.items) {
+        if (item.kind === "check" || initial[item.key]) continue;
+        const inherited = base?.lastFields?.[item.key];
+        const fallback =
+          item.autoDefault === "today" ? localDay(0) : item.autoDefault === "tomorrow" ? localDay(1) : "";
+        const value = inherited ?? fallback;
+        if (value) initial[item.key] = { key: item.key, state: "ok", value };
+      }
     }
-    if (!draft?.doctorName && base?.doctorName) setDoctorName(base.doctorName);
-  }, [board, base, baseCode]);
+    setAnswers(initial);
+    if (draft?.doctorName) setDoctorName(draft.doctorName);
+    else if (base?.doctorName) setDoctorName(base.doctorName);
+  }, [board, def, base, baseCode]);
 
   // Persiste rascunho a cada mudança.
   useEffect(() => {
@@ -234,23 +252,101 @@ export default function ChecklistPage() {
               {answeredCount}/{totalItems}
             </span>
           ) : null}
+          <button
+            onClick={() => setShowHistory(true)}
+            aria-label="Checklists anteriores"
+            className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm active:bg-slate-100"
+          >
+            <History className="h-5 w-5" />
+            {history && history.alerts.length > 0 ? (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-bold text-white">
+                {history.alerts.length}
+              </span>
+            ) : null}
+          </button>
         </div>
         {phase.kind !== "intro" && phase.kind !== "done" ? (
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
-            <div
-              className={clsx(
-                "h-full rounded-full transition-[width] duration-300 ease-out",
-                missingCount > 0 ? "bg-accent-500" : "bg-emerald-500",
-              )}
-              style={{ width: totalItems ? `${(answeredCount / totalItems) * 100}%` : "0%" }}
-            />
-          </div>
+          <>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
+              <div
+                className={clsx(
+                  "h-full rounded-full transition-[width] duration-300 ease-out",
+                  missingCount > 0 ? "bg-accent-500" : "bg-emerald-500",
+                )}
+                style={{ width: totalItems ? `${(answeredCount / totalItems) * 100}%` : "0%" }}
+              />
+            </div>
+            {/* Navegação livre entre seções */}
+            <div className="-mx-1 mt-2 flex gap-1.5 overflow-x-auto px-1 pb-0.5">
+              {groups.map((g, i) => {
+                const total = g.items.length;
+                const done = g.items.filter((it) => answers[it.key]).length;
+                const current = phase.kind === "group" && phase.index === i;
+                return (
+                  <button
+                    key={g.key}
+                    onClick={() => goTo({ kind: "group", index: i })}
+                    aria-label={`Seção ${i + 1}: ${g.title}`}
+                    className={clsx(
+                      "flex h-8 min-w-8 shrink-0 items-center justify-center rounded-full px-2.5 text-[12px] font-bold transition-colors",
+                      current
+                        ? "bg-brand-600 text-white"
+                        : done === total
+                          ? "bg-emerald-100 text-emerald-700"
+                          : done > 0
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-white text-slate-500 ring-1 ring-slate-200",
+                    )}
+                  >
+                    {done === total && !current ? "✓ " : ""}
+                    {i + 1}
+                  </button>
+                );
+              })}
+              <button
+                onClick={() => goTo({ kind: "review" })}
+                className={clsx(
+                  "flex h-8 shrink-0 items-center rounded-full px-3 text-[12px] font-bold transition-colors",
+                  phase.kind === "review" ? "bg-brand-600 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200",
+                )}
+              >
+                Revisar
+              </button>
+            </div>
+          </>
         ) : null}
       </div>
 
       {/* ---------- INTRO ---------- */}
       {phase.kind === "intro" ? (
         <main key={phaseKey} className="step-in">
+          {history && (history.alerts.length > 0 || history.latestObs.length > 0) ? (
+            <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">
+              <p className="text-[12px] font-bold uppercase tracking-wide text-amber-800">
+                ⚠️ Atenção — do último checklist
+              </p>
+              <ul className="mt-2 flex flex-col gap-1.5">
+                {history.alerts.map((a) => (
+                  <li key={a.key} className="text-[14px] leading-snug text-amber-900">
+                    🚫 <b>{a.label}</b> — em falta desde {dayLabel(a.sinceDay)}
+                    {a.obs ? <span className="text-amber-800/80"> — {a.obs}</span> : null}
+                  </li>
+                ))}
+                {history.latestObs.map((o, i) => (
+                  <li key={i} className="text-[14px] leading-snug text-amber-900">
+                    📝 {o.label} — <i>{o.obs}</i>
+                  </li>
+                ))}
+              </ul>
+              <button
+                onClick={() => setShowHistory(true)}
+                className="mt-2.5 text-[13px] font-semibold text-amber-800 underline underline-offset-2"
+              >
+                Ver checklists anteriores →
+              </button>
+            </div>
+          ) : null}
+
           {base?.submission ? (
             <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
               <p className="flex items-center gap-2 text-[14px] font-semibold text-emerald-800">
@@ -377,6 +473,34 @@ export default function ChecklistPage() {
             </div>
           </div>
 
+          {answeredCount < totalItems ? (
+            <div className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-4">
+              <p className="text-[13px] font-bold text-amber-800">
+                Ainda faltam responder {totalItems - answeredCount}{" "}
+                {totalItems - answeredCount === 1 ? "item" : "itens"}:
+              </p>
+              <div className="mt-2 flex flex-col gap-1.5">
+                {groups
+                  .map((g, index) => ({ g, index, count: g.items.filter((i) => !answers[i.key]).length }))
+                  .filter((x) => x.count > 0)
+                  .map(({ g, index, count }) => (
+                    <button
+                      key={g.key}
+                      onClick={() => goTo({ kind: "group", index })}
+                      className="flex items-center justify-between rounded-xl bg-white px-3 py-2 text-left text-[13px] font-semibold text-amber-900 ring-1 ring-amber-200 active:bg-amber-100"
+                    >
+                      <span>
+                        Seção {index + 1} — {g.title}
+                      </span>
+                      <span className="shrink-0 text-amber-700">
+                        {count} {count === 1 ? "item" : "itens"} →
+                      </span>
+                    </button>
+                  ))}
+              </div>
+            </div>
+          ) : null}
+
           {missingCount > 0 ? (
             <div className="mt-3 rounded-2xl border border-brand-200 bg-white p-4 shadow-sm">
               <p className="text-[13px] font-bold uppercase tracking-wide text-brand-700">Itens faltando</p>
@@ -392,11 +516,11 @@ export default function ChecklistPage() {
                   ))}
               </ul>
             </div>
-          ) : (
+          ) : answeredCount === totalItems ? (
             <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-center text-[14px] font-medium text-emerald-800">
               Todos os itens conformes ✨
             </p>
-          )}
+          ) : null}
 
           <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <label className="text-[13px] font-medium text-slate-600" htmlFor="doctor-review">
@@ -480,8 +604,10 @@ export default function ChecklistPage() {
                     ? goTo({ kind: "group", index: groupIndex + 1 })
                     : goTo({ kind: "review" })
                 }
-                disabled={!groupComplete}
-                className="inline-flex min-h-13 flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 text-[16px] font-bold text-white shadow-sm active:bg-brand-700 disabled:bg-slate-300"
+                className={clsx(
+                  "inline-flex min-h-13 flex-1 items-center justify-center gap-2 rounded-xl text-[16px] font-bold text-white shadow-sm",
+                  groupComplete ? "bg-brand-600 active:bg-brand-700" : "bg-brand-400 active:bg-brand-500",
+                )}
               >
                 {groupIndex + 1 < groups.length ? "Próxima seção" : "Revisar e enviar"}
                 <ArrowRight className="h-5 w-5" />
@@ -499,7 +625,7 @@ export default function ChecklistPage() {
                 </button>
                 <button
                   onClick={() => void submit()}
-                  disabled={submitting || doctorName.trim().length < 3}
+                  disabled={submitting || doctorName.trim().length < 3 || answeredCount < totalItems}
                   className="inline-flex min-h-13 flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 text-[16px] font-bold text-white shadow-sm active:bg-brand-700 disabled:bg-slate-300"
                 >
                   {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
@@ -508,13 +634,10 @@ export default function ChecklistPage() {
               </>
             ) : null}
           </div>
-          {phase.kind === "group" && !groupComplete ? (
-            <p className="mx-auto mt-1.5 max-w-md text-center text-[12px] text-slate-400">
-              Marque todos os itens da seção para avançar
-            </p>
-          ) : null}
         </div>
       ) : null}
+
+      {showHistory ? <HistoryModal code={baseCode} history={history} onClose={() => setShowHistory(false)} /> : null}
 
       <ObsSheet
         item={sheetItem}

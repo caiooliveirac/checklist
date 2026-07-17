@@ -17,6 +17,8 @@ export interface ChecklistItem {
   kind: ItemKind;
   /** Placeholder para campos (ex.: "número do lacre"). */
   hint?: string;
+  /** Default automático de campos de data quando não há valor herdado. */
+  autoDefault?: "today" | "tomorrow";
 }
 
 export interface ChecklistGroup {
@@ -34,6 +36,8 @@ export interface ChecklistDef {
 const DATA_DIR = fileURLToPath(new URL("../data", import.meta.url));
 
 interface RawGroup {
+  /** Número do heading ("5", "5.1"…) — base das chaves; estável entre versões. */
+  num: string;
   title: string;
   items: string[];
 }
@@ -41,10 +45,18 @@ interface RawGroup {
 function parseMarkdown(md: string): RawGroup[] {
   const groups: RawGroup[] = [];
   let current: RawGroup | null = null;
+  let seq = 0;
   for (const line of md.split(/\r?\n/)) {
     const heading = line.match(/^#{2,3}\s+(.+?)\s*$/);
     if (heading?.[1]) {
-      current = { title: heading[1].trim(), items: [] };
+      const full = heading[1].trim();
+      seq += 1;
+      const numbered = full.match(/^(\d+(?:\.\d+)?)\.?\s*(.*)$/);
+      current = {
+        num: numbered?.[1] ?? `x${seq}`,
+        title: numbered?.[2]?.trim() || full,
+        items: [],
+      };
       groups.push(current);
       continue;
     }
@@ -54,12 +66,12 @@ function parseMarkdown(md: string): RawGroup[] {
   return groups.filter((g) => g.items.length > 0);
 }
 
-function detectKind(label: string): { kind: ItemKind; hint?: string } {
+function detectKind(label: string): { kind: ItemKind; hint?: string; autoDefault?: "today" | "tomorrow" } {
   const upper = label.toUpperCase();
-  if (upper.includes("PREENCHER DATA")) return { kind: "date" };
   if (upper.startsWith("LACRE")) return { kind: "text", hint: "Número do lacre" };
-  if (upper.startsWith("CHECADA EM")) return { kind: "date" };
-  if (upper.includes("PRÓXIMA TROCA") || upper.includes("PROXIMA TROCA")) return { kind: "date" };
+  if (upper.startsWith("CHECADA EM")) return { kind: "date", autoDefault: "today" };
+  if (upper.includes("PRÓXIMA TROCA") || upper.includes("PROXIMA TROCA")) return { kind: "date", autoDefault: "tomorrow" };
+  if (upper.includes("PREENCHER DATA")) return { kind: "date" };
   return { kind: "check" };
 }
 
@@ -83,18 +95,21 @@ export function buildDef(fullMd: string, compactMd?: string): ChecklistDef {
   const compactFlat = fullCount === compactCount ? compact.flatMap((g) => g.items) : null;
 
   let idx = 0;
-  const groups: ChecklistGroup[] = full.map((g, gi) => ({
-    key: `g${gi + 1}`,
+  const groups: ChecklistGroup[] = full.map((g) => ({
+    key: `g${g.num}`,
     title: stripNumber(g.title),
     items: g.items.map((label, ii) => {
       const short = compactFlat?.[idx] ?? autoShorten(label);
       idx += 1;
-      const { kind, hint } = detectKind(label);
-      return { key: `g${gi + 1}i${ii + 1}`, label, shortLabel: short, kind, hint };
+      const { kind, hint, autoDefault } = detectKind(label);
+      const item: ChecklistItem = { key: `g${g.num}i${ii + 1}`, label, shortLabel: short, kind };
+      if (hint) item.hint = hint;
+      if (autoDefault) item.autoDefault = autoDefault;
+      return item;
     }),
   }));
 
-  return { groups, totalItems: fullCount, version: "usa-v1" };
+  return { groups, totalItems: fullCount, version: "usa-v2" };
 }
 
 let cached: ChecklistDef | null = null;

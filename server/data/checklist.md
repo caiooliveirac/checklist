@@ -5,6 +5,9 @@ FORMATO (PARA CONSUMO POR PARSER/UI):
 - GRUPOS: headings "## <n>. <NOME>"
 - ITENS INTERATIVOS: task-list "- [ ] ITEM EM MAIÚSCULAS" (pode conter detalhes entre parênteses)
 - CAMPOS (LACRE/DATAS): também em task-list para serem coletados pela UI futuramente
+- IMPORTANTE: NÃO renumerar seções ao remover uma (ex.: a 4, hemogasômetro, foi
+  removida e o número ficou vago) — as chaves dos itens derivam do número do
+  heading e precisam ficar estáveis para o histórico de materiais.
 -->
 
 ## 1. COMUNICAÇÃO
@@ -32,12 +35,6 @@ FORMATO (PARA CONSUMO POR PARSER/UI):
 - [ ] BATERIA CARREGADA
 - [ ] CABOS E BASE
 - [ ] LÂMINAS (MAC 1–4 E D-BLADE)
-
-## 4. HEMOGASÔMETRO I-STAT
-
-- [ ] EQUIPAMENTO TESTADO (ANALISADOR, IMPRESSORA, SIMULADOR E CARREGADORES)
-- [ ] BATERIAS E SERINGAS PARA GASOMETRIA
-- [ ] CARTUCHOS REFRIGERADOS (CG4+, CKMB, CHEM8+, CTNI, BNP — VALIDIDADE REGISTRADA)
 
 ## 5. MOCHILA PEDIÁTRICA
 
