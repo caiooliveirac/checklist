@@ -5,9 +5,9 @@ FORMATO (PARA CONSUMO POR PARSER/UI):
 - GRUPOS: headings "## <n>. <NOME>"
 - ITENS INTERATIVOS: task-list "- [ ] ITEM EM MAIÚSCULAS" (pode conter detalhes entre parênteses)
 - CAMPOS (LACRE/DATAS): também em task-list para serem coletados pela UI futuramente
-- IMPORTANTE: NÃO renumerar seções ao remover uma (ex.: a 4, hemogasômetro, foi
-  removida e o número ficou vago) — as chaves dos itens derivam do número do
-  heading e precisam ficar estáveis para o histórico de materiais.
+- IMPORTANTE: as chaves dos itens derivam do número do heading (g<seção>i<posição>).
+  Renumerar seções ou reordenar itens EXIGE migrar as chaves nas submissões do
+  banco (tabela submissions, coluna items) para preservar o histórico de materiais.
 -->
 
 ## 1. COMUNICAÇÃO
@@ -37,13 +37,13 @@ FORMATO (PARA CONSUMO POR PARSER/UI):
 - [ ] CABOS E BASE
 - [ ] LÂMINAS (MAC 1–4 E D-BLADE)
 
-## 5. MOCHILA PEDIÁTRICA
+## 4. MOCHILA PEDIÁTRICA
 
 - [ ] LACRE (XXXX)
 - [ ] CHECADA EM (PREENCHER DATA)
 - [ ] DATA DA PRÓXIMA TROCA (PREENCHER DATA)
 
-### 5.1 MATERIAIS PARA VIA AÉREA E VENTILAÇÃO INFANTIL/NEONATAL
+### 4.1 MATERIAIS PARA VIA AÉREA E VENTILAÇÃO INFANTIL/NEONATAL
 
 - [ ] LARINGOSCÓPIO PEDIÁTRICO (CABO + LÂMINAS MILLER/MAC 0–2)
 - [ ] AMBUS (PEDIÁTRICO E NEONATAL)
@@ -54,7 +54,7 @@ FORMATO (PARA CONSUMO POR PARSER/UI):
 - [ ] SONDAS (6, 8, 10, 12)
 - [ ] CATETER NASAL E EXTENSORES DE O2
 
-## 6. EQUIPAMENTOS FIXOS DA USA
+## 5. EQUIPAMENTOS FIXOS DA USA
 
 - [ ] MONITOR MULTIPARAMÉTRICO PHILIPS COM PNI
 - [ ] DEA (ZOLL)
@@ -62,12 +62,12 @@ FORMATO (PARA CONSUMO POR PARSER/UI):
 - [ ] KIT DRENO DE TÓRAX (Nº 28 E 22)
 - [ ] AUTOPULSE
 
-## 7. ULTRASSOM PORTÁTIL – LUMIFY
+## 6. ULTRASSOM PORTÁTIL – LUMIFY
 
 - [ ] TABLET CARREGADO
 - [ ] PROBES SETORIAL E LINEAR
 - [ ] CABOS, CARREGADOR E GEL CONDUTOR
 
-## 8. DOCUMENTAÇÃO
+## 7. DOCUMENTAÇÃO
 
 - [ ] PASTA COM 03 DOs EM BRANCO + LIVRO DE PROTOCOLO

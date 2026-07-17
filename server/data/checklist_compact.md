@@ -37,13 +37,13 @@ REGRAS:
 - [ ] Cabos/Base(Vídeo)
 - [ ] Lâminas(Vídeo)
 
-## 5. MOCHILA PEDIÁTRICA
+## 4. MOCHILA PEDIÁTRICA
 
 - [ ] Lacre
 - [ ] Checada em
 - [ ] Proxima troca
 
-### 5.1 MATERIAIS PARA VIA AÉREA E VENTILAÇÃO INFANTIL/NEONATAL
+### 4.1 MATERIAIS PARA VIA AÉREA E VENTILAÇÃO INFANTIL/NEONATAL
 
 - [ ] Laringoscópio ped
 - [ ] AMBU ped/neo
@@ -54,7 +54,7 @@ REGRAS:
 - [ ] Sondas
 - [ ] Cateter de O2
 
-## 6. EQUIPAMENTOS FIXOS DA USA
+## 5. EQUIPAMENTOS FIXOS DA USA
 
 - [ ] Monitor
 - [ ] DEA
@@ -62,12 +62,12 @@ REGRAS:
 - [ ] Kit dreno
 - [ ] Autopulse
 
-## 7. ULTRASSOM PORTÁTIL – LUMIFY
+## 6. ULTRASSOM PORTÁTIL – LUMIFY
 
 - [ ] Tablet USG
 - [ ] Probes USG
 - [ ] Cabos/Gel USG
 
-## 8. DOCUMENTAÇÃO
+## 7. DOCUMENTAÇÃO
 
 - [ ] DOs

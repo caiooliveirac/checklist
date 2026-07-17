@@ -21,8 +21,8 @@ describe("buildDef", () => {
 
   it("deriva chaves do número do heading (estáveis a remoções)", () => {
     const def = buildDef(full, compact);
-    expect(def.groups.map((g) => g.key)).toEqual(["g1", "g2", "g3", "g5", "g5.1", "g6", "g7", "g8"]);
-    expect(def.groups.find((g) => g.key === "g5.1")!.items[0]!.key).toBe("g5.1i1");
+    expect(def.groups.map((g) => g.key)).toEqual(["g1", "g2", "g3", "g4", "g4.1", "g5", "g6", "g7"]);
+    expect(def.groups.find((g) => g.key === "g4.1")!.items[0]!.key).toBe("g4.1i1");
   });
 
   it("usa rótulos curtos do compact quando em sincronia", () => {
