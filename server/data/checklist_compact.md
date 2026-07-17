@@ -23,7 +23,8 @@ REGRAS:
 - [ ] Supraglóticas
 - [ ] Tubos
 - [ ] Capnômetro
-- [ ] Thomas
+- [ ] Thomas/Frascos
+- [ ] Cateter/Extensor O2
 - [ ] Sondas/Extensor/Ponta rígida
 - [ ] Máscaras
 - [ ] Filtro

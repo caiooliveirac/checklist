@@ -12,7 +12,7 @@ describe("buildDef", () => {
   it("parseia todos os grupos e itens do checklist USA", () => {
     const def = buildDef(full, compact);
     expect(def.groups.length).toBe(8); // 7 seções + subgrupo 5.1 (a 4 foi removida)
-    expect(def.totalItems).toBe(37);
+    expect(def.totalItems).toBe(38);
     const titles = def.groups.map((g) => g.title);
     expect(titles[0]).toBe("COMUNICAÇÃO");
     expect(titles).toContain("MOCHILA PEDIÁTRICA");
@@ -41,7 +41,7 @@ describe("buildDef", () => {
 
   it("cai para heurística quando compact está fora de sincronia", () => {
     const def = buildDef(full, "## 1. X\n\n- [ ] Só um item\n");
-    expect(def.totalItems).toBe(37);
+    expect(def.totalItems).toBe(38);
     const first = def.groups[0]!.items[0]!;
     expect(first.shortLabel.length).toBeLessThanOrEqual(35);
   });
