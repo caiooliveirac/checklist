@@ -46,3 +46,10 @@ describe("missingSummaryText", () => {
     ).toContain("nenhuma falta");
   });
 });
+
+describe("generateKeyword", () => {
+  it("gera 4 dígitos", async () => {
+    const { generateKeyword } = await import("../src/keys.js");
+    for (let i = 0; i < 20; i++) expect(generateKeyword()).toMatch(/^\d{4}$/);
+  });
+});

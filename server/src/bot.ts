@@ -6,6 +6,7 @@ import { collectDigestData, renderDigestMessage, alreadySent, logDigest } from "
 import { getChecklistDef, itemByKey } from "./checklist-def.js";
 import { getBoard, type OnDuty } from "./plantoes.js";
 import { materialButtons, materialHistoryText, recentMissing, missingSummaryText, HISTORY_DAYS } from "./history.js";
+import { getOrCreateKey } from "./keys.js";
 import { latestByBase, type DaySubmission } from "./submissions.js";
 import type { StoredSubmission } from "./submissions.js";
 
@@ -50,6 +51,7 @@ const HELP_TEXT = [
   "• /usa SM01 — detalhe direto de uma unidade",
   "• /material — histórico de um material: quem reportou presente/faltando nos últimos dias",
   "• /sumidos — itens que faltaram nos últimos dias, por ambulância",
+  "• /chave SM01 — chave do dia de uma ambulância (para repassar ao plantonista)",
   "",
   "Os resumos automáticos chegam às <b>11h</b> e <b>13h</b>, e cada checklist concluído gera aviso na hora.",
 ].join("\n");
@@ -70,9 +72,36 @@ export async function adminChatIds(): Promise<string[]> {
   return [...ids];
 }
 
-async function isAdmin(chatId: string | number): Promise<boolean> {
-  return (await adminChatIds()).includes(String(chatId));
+async function isAdmin(userId: string | number | undefined): Promise<boolean> {
+  if (userId === undefined) return false;
+  return (await adminChatIds()).includes(String(userId));
 }
+
+/** Base em que este usuário do Telegram está de plantão agora (match pelo grupo). */
+async function identifyDoctorBase(userId: string | number): Promise<OnDuty | null> {
+  const { board } = await getBoard();
+  return board.find((b) => b.telegramUserId === String(userId)) ?? null;
+}
+
+async function doctorKeyMessage(base: OnDuty): Promise<string> {
+  const key = await getOrCreateKey(base.baseCode);
+  const name = base.displayName ?? base.doctorName;
+  return [
+    `🔑 <b>${esc(base.baseCode)}</b> — chave do checklist de hoje: <code>${esc(key)}</code>`,
+    name ? `👨‍⚕️ Plantão: ${esc(name)}${base.shiftLabel ? ` (${esc(base.shiftLabel)})` : ""}` : "",
+    "",
+    `📋 ${config.publicUrl}/b/${base.baseCode}`,
+    "<i>A chave vale só hoje e só para essa ambulância.</i>",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+const UNIDENTIFIED_MSG = [
+  "Não consegui te identificar no plantão de hoje. 🤔",
+  "Mande sua mensagem de chegada no grupo do plantões (como de costume) e fale comigo de novo em instantes.",
+  "Se não resolver, peça a chave a um coordenador.",
+].join("\n");
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -290,22 +319,39 @@ export function createBot(): Bot | null {
   bot = new Bot(config.telegram.token);
 
   const guard = async (ctx: Context): Promise<boolean> => {
-    if (ctx.chat && (await isAdmin(ctx.chat.id))) return true;
-    await ctx.reply(
-      "Este é o bot administrativo do Checklist USA (checklist.mnrs.com.br).\nSe você é da coordenação, use /admin <código> para se registrar.",
-    );
+    if (await isAdmin(ctx.from?.id)) return true;
+    // Em grupo, comandos administrativos de não-admins são ignorados em silêncio.
+    if (ctx.chat?.type !== "private") return false;
+    const base = ctx.from?.id ? await identifyDoctorBase(ctx.from.id) : null;
+    if (base) {
+      await ctx.reply(await doctorKeyMessage(base), { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+    } else {
+      await ctx.reply(
+        "Este é o bot do Checklist USA (checklist.mnrs.com.br).\n" + UNIDENTIFIED_MSG,
+      );
+    }
     return false;
   };
 
   bot.command("start", async (ctx) => {
-    if (await isAdmin(ctx.chat.id)) {
+    if (await isAdmin(ctx.from?.id)) {
       await ctx.reply(`👋 Bem-vindo!\n\n${HELP_TEXT}`, REPLY_OPTS);
+      return;
+    }
+    const base = ctx.from?.id ? await identifyDoctorBase(ctx.from.id) : null;
+    if (base) {
+      await ctx.reply(`👋 Olá! Te encontrei no plantão de hoje.\n\n${await doctorKeyMessage(base)}`, {
+        parse_mode: "HTML",
+        link_preview_options: { is_disabled: true },
+      });
     } else {
       await ctx.reply(
         [
-          "👋 Este é o bot administrativo do <b>Checklist USA</b> (checklist.mnrs.com.br).",
-          "O checklist é feito pela plataforma web; avisos chegam para a coordenação.",
-          "Se você é da coordenação, use /admin &lt;código&gt; para se registrar.",
+          "👋 Este é o bot do <b>Checklist USA</b> (checklist.mnrs.com.br).",
+          "",
+          UNIDENTIFIED_MSG,
+          "",
+          "Coordenação: /admin &lt;código&gt; para se registrar.",
         ].join("\n"),
         { parse_mode: "HTML" },
       );
@@ -313,6 +359,7 @@ export function createBot(): Bot | null {
   });
 
   bot.command("admin", async (ctx) => {
+    if (ctx.chat.type !== "private") return; // registro só no privado
     const code = (ctx.match ?? "").trim();
     if (!config.telegram.adminSetupCode || code !== config.telegram.adminSetupCode) {
       await ctx.reply("Código inválido.");
@@ -388,7 +435,7 @@ export function createBot(): Bot | null {
 
   bot.callbackQuery(/^base:(.+)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    if (!ctx.chat || !(await isAdmin(ctx.chat.id))) return;
+    if (!(await isAdmin(ctx.from?.id))) return;
     const code = ctx.match?.[1] ?? "";
     await ctx.reply(await textUnidade(code), REPLY_OPTS);
   });
@@ -396,7 +443,7 @@ export function createBot(): Bot | null {
   // Etapa 2 do /material: ambulância escolhida → qual material?
   bot.callbackQuery(/^mhu:(.+)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    if (!ctx.chat || !(await isAdmin(ctx.chat.id))) return;
+    if (!(await isAdmin(ctx.from?.id))) return;
     const code = (ctx.match?.[1] ?? "").toUpperCase();
     await ctx.reply(`🚑 <b>${code}</b> — agora, qual material você procura?`, {
       parse_mode: "HTML",
@@ -407,7 +454,7 @@ export function createBot(): Bot | null {
   // Etapa 3 do /material: histórico do item na unidade.
   bot.callbackQuery(/^mh:([^:]+):(.+)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    if (!ctx.chat || !(await isAdmin(ctx.chat.id))) return;
+    if (!(await isAdmin(ctx.from?.id))) return;
     const code = ctx.match?.[1] ?? "";
     const key = ctx.match?.[2] ?? "";
     await ctx.reply(await materialHistoryText(code, key), REPLY_OPTS);
@@ -416,7 +463,7 @@ export function createBot(): Bot | null {
   // /sumidos: faltas recentes da unidade, itens clicáveis para o histórico.
   bot.callbackQuery(/^su:(.+)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    if (!ctx.chat || !(await isAdmin(ctx.chat.id))) return;
+    if (!(await isAdmin(ctx.from?.id))) return;
     const code = (ctx.match?.[1] ?? "").toUpperCase();
     const data = await recentMissing(code);
     const kb = new InlineKeyboard();
@@ -435,14 +482,49 @@ export function createBot(): Bot | null {
     await ctx.reply(HELP_TEXT, REPLY_OPTS);
   }));
 
-  // Fallback: QUALQUER outra mensagem de um admin recebe o guia de comandos.
-  bot.on("message:text", async (ctx) => {
-    if (await isAdmin(ctx.chat.id)) {
-      await ctx.reply(`Não entendi. 🙂\n\n${HELP_TEXT}`, REPLY_OPTS);
+  // /chave — sem argumento: identifica o remetente e entrega a chave da base
+  // dele (funciona no privado e no grupo). Com argumento (SM01): só admins.
+  bot.command("chave", async (ctx) => {
+    const arg = (typeof ctx.match === "string" ? ctx.match : "").trim().toUpperCase();
+    if (arg) {
+      if (!(await isAdmin(ctx.from?.id))) {
+        if (ctx.chat?.type === "private") await ctx.reply("Só a coordenação pode pedir a chave de uma base específica.");
+        return;
+      }
+      const { board } = await getBoard();
+      const base = board.find((b) => b.baseCode === arg);
+      if (!base) {
+        await ctx.reply(`Base "${arg}" não encontrada. Válidas: ${board.map((b) => b.baseCode).join(", ")}`);
+        return;
+      }
+      await ctx.reply(await doctorKeyMessage(base), { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+      return;
+    }
+    const base = ctx.from?.id ? await identifyDoctorBase(ctx.from.id) : null;
+    if (base) {
+      const msg = await doctorKeyMessage(base);
+      const mention = ctx.chat?.type === "private" ? "" : `<a href="tg://user?id=${ctx.from?.id}">🔑</a> `;
+      await ctx.reply(mention + msg, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+    } else if (ctx.chat?.type === "private") {
+      await ctx.reply(UNIDENTIFIED_MSG);
     } else {
-      await ctx.reply(
-        "Este é o bot administrativo do Checklist USA (checklist.mnrs.com.br).\nSe você é da coordenação, use /admin <código> para se registrar.",
-      );
+      await ctx.reply(`Não identifiquei seu plantão de hoje — um coordenador pode usar /chave SM01.`);
+    }
+  });
+
+  // Fallback (SÓ no privado — em grupo o bot fica quieto fora dos comandos):
+  // admin recebe o guia; plantonista identificado recebe a chave do dia.
+  bot.on("message:text", async (ctx) => {
+    if (ctx.chat.type !== "private") return;
+    if (await isAdmin(ctx.from?.id)) {
+      await ctx.reply(`Não entendi. 🙂\n\n${HELP_TEXT}`, REPLY_OPTS);
+      return;
+    }
+    const base = ctx.from?.id ? await identifyDoctorBase(ctx.from.id) : null;
+    if (base) {
+      await ctx.reply(await doctorKeyMessage(base), { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+    } else {
+      await ctx.reply("Este é o bot do Checklist USA (checklist.mnrs.com.br).\n" + UNIDENTIFIED_MSG);
     }
   });
 
@@ -465,6 +547,7 @@ export function createBot(): Bot | null {
       { command: "unidades", description: "Detalhe de uma USA específica" },
       { command: "material", description: "Histórico de um material (quem reportou)" },
       { command: "sumidos", description: "Faltas dos últimos dias por ambulância" },
+      { command: "chave", description: "Chave do dia do checklist" },
       { command: "ajuda", description: "Guia de comandos" },
     ])
     .catch((err) => console.error("[bot] setMyCommands falhou:", err));

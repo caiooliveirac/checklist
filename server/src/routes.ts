@@ -5,6 +5,7 @@ import { getBoard, plantoesHealthy } from "./plantoes.js";
 import { bahiaDay, bahiaDayLabel } from "./day.js";
 import { createSubmission, latestByBase, lastFieldValues, ValidationError, type AnsweredItem } from "./submissions.js";
 import { recentHistory, HISTORY_DAYS } from "./history.js";
+import { verifyKey } from "./keys.js";
 import { itemByKey } from "./checklist-def.js";
 import { notifySubmission } from "./bot.js";
 import { hashIp } from "./text.js";
@@ -12,6 +13,7 @@ import { config } from "./config.js";
 
 interface SubmitBody {
   baseCode?: string;
+  accessKey?: string;
   doctorName?: string;
   doctorId?: string | null;
   occupancyId?: string | null;
@@ -48,6 +50,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       day,
       dayLabel: bahiaDayLabel(),
       degraded,
+      keyRequired: config.keyRequired,
       bases: board.map((b) => {
         const sub = subs.get(b.baseCode) ?? null;
         return {
@@ -107,18 +110,26 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     // Alertas: itens faltando no checklist MAIS RECENTE, com "desde quando"
     // (dia mais antigo da sequência de faltas dentro da janela).
     const latest = history[0];
-    const alerts: { key: string; label: string; sinceDay: string; obs: string | null }[] = [];
+    const alerts: { key: string; label: string; sinceDay: string; obs: string | null; reportedBy: string }[] = [];
     if (latest) {
       for (const item of latest.items.filter((i) => i.state === "missing")) {
         let sinceDay = latest.day;
+        let reportedBy = latest.doctorName;
         let obs: string | null = item.obs ?? null;
         for (const h of history.slice(1)) {
           const past = h.items.find((i) => i.key === item.key);
           if (past?.state !== "missing") break;
           sinceDay = h.day;
+          reportedBy = h.doctorName;
           if (!obs && past.obs) obs = past.obs;
         }
-        alerts.push({ key: item.key, label: itemByKey(def, item.key)?.shortLabel ?? item.key, sinceDay, obs });
+        alerts.push({
+          key: item.key,
+          label: itemByKey(def, item.key)?.shortLabel ?? item.key,
+          sinceDay,
+          obs,
+          reportedBy,
+        });
       }
     }
 
@@ -135,9 +146,28 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  // Verificação antecipada da chave do dia (para a UI validar antes de começar).
+  app.post("/api/keys/verify", async (req) => {
+    const { baseCode, key } = (req.body ?? {}) as { baseCode?: string; key?: string };
+    if (!config.keyRequired) return { ok: true, required: false };
+    const ok = await verifyKey(baseCode ?? "", key ?? "");
+    return { ok, required: true };
+  });
+
   app.post("/api/submissions", async (req, reply) => {
     const body = (req.body ?? {}) as SubmitBody;
     try {
+      if (config.keyRequired) {
+        const keyOk = await verifyKey(body.baseCode ?? "", body.accessKey ?? "");
+        if (!keyOk) {
+          reply.code(403);
+          return {
+            ok: false,
+            error:
+              "Chave do dia inválida. Peça ao bot @samu_checklists_bot no privado (ou /chave no grupo do plantões).",
+          };
+        }
+      }
       const stored = await createSubmission({
         baseCode: body.baseCode ?? "",
         doctorName: body.doctorName ?? "",

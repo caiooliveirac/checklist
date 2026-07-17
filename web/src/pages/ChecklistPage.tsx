@@ -38,6 +38,7 @@ type Phase = { kind: "intro" } | { kind: "group"; index: number } | { kind: "rev
 interface Draft {
   answers: Record<string, AnsweredItem>;
   doctorName: string;
+  accessKey?: string;
   savedAt: string;
 }
 
@@ -66,6 +67,9 @@ export default function ChecklistPage() {
   const [phase, setPhase] = useState<Phase>({ kind: "intro" });
   const [answers, setAnswers] = useState<Record<string, AnsweredItem>>({});
   const [doctorName, setDoctorName] = useState("");
+  const [accessKey, setAccessKey] = useState("");
+  const [keyError, setKeyError] = useState("");
+  const [verifyingKey, setVerifyingKey] = useState(false);
   const [sheetItem, setSheetItem] = useState<ChecklistItemDef | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -109,18 +113,19 @@ export default function ChecklistPage() {
     setAnswers(initial);
     if (draft?.doctorName) setDoctorName(draft.doctorName);
     else if (base?.doctorName) setDoctorName(base.doctorName);
+    if (draft?.accessKey) setAccessKey(draft.accessKey);
   }, [board, def, base, baseCode]);
 
   // Persiste rascunho a cada mudança.
   useEffect(() => {
     if (!board || !hydrated.current) return;
-    const draft: Draft = { answers, doctorName, savedAt: new Date().toISOString() };
+    const draft: Draft = { answers, doctorName, accessKey, savedAt: new Date().toISOString() };
     try {
       localStorage.setItem(draftKey(board.day, baseCode), JSON.stringify(draft));
     } catch {
       /* armazenamento cheio/indisponível — segue sem rascunho */
     }
-  }, [answers, doctorName, board, baseCode]);
+  }, [answers, doctorName, accessKey, board, baseCode]);
 
   const groups = def?.groups ?? [];
   const totalItems = def?.totalItems ?? 0;
@@ -171,6 +176,24 @@ export default function ChecklistPage() {
     window.scrollTo({ top: 0 });
   }
 
+  async function startChecklist(): Promise<void> {
+    if (!board?.keyRequired) {
+      goTo({ kind: "group", index: 0 });
+      return;
+    }
+    setVerifyingKey(true);
+    setKeyError("");
+    try {
+      const res = await api.verifyKey(baseCode, accessKey);
+      if (res.ok) goTo({ kind: "group", index: 0 });
+      else setKeyError("Chave incorreta. Peça ao @samu_checklists_bot no privado, ou /chave no grupo do plantões.");
+    } catch {
+      setKeyError("Não consegui validar a chave — verifique a conexão.");
+    } finally {
+      setVerifyingKey(false);
+    }
+  }
+
   async function submit(): Promise<void> {
     if (!def || !board) return;
     setSubmitting(true);
@@ -179,6 +202,7 @@ export default function ChecklistPage() {
       const items = groups.flatMap((g) => g.items).map((i) => answers[i.key]!).filter(Boolean);
       const res = await api.submit({
         baseCode,
+        accessKey,
         doctorName: doctorName.trim(),
         doctorId: base?.doctorId ?? null,
         occupancyId: base?.occupancyId ?? null,
@@ -329,6 +353,7 @@ export default function ChecklistPage() {
                 {history.alerts.map((a) => (
                   <li key={a.key} className="text-[14px] leading-snug text-amber-900">
                     🚫 <b>{a.label}</b> — em falta desde {dayLabel(a.sinceDay)}
+                    <span className="text-amber-800/90"> · informado por {a.reportedBy}</span>
                     {a.obs ? <span className="text-amber-800/80"> — {a.obs}</span> : null}
                   </li>
                 ))}
@@ -389,6 +414,42 @@ export default function ChecklistPage() {
               autoComplete="name"
               className="mt-1 min-h-12 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 text-[15px] outline-none ring-brand-300 focus:bg-white focus:ring-2"
             />
+            {board.keyRequired ? (
+              <>
+                <label className="mt-3 block text-[13px] font-medium text-slate-600" htmlFor="access-key">
+                  Chave do dia 🔑
+                </label>
+                <input
+                  id="access-key"
+                  value={accessKey}
+                  onChange={(e) => {
+                    setAccessKey(e.target.value.replace(/\D/g, "").slice(0, 4));
+                    setKeyError("");
+                  }}
+                  placeholder="4 dígitos"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  className="mt-1 min-h-12 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 text-[17px] font-bold tracking-[0.3em] outline-none ring-brand-300 focus:bg-white focus:ring-2"
+                />
+                <p className="mt-1.5 text-[12px] leading-relaxed text-slate-400">
+                  O bot{" "}
+                  <a
+                    href="https://t.me/samu_checklists_bot"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-semibold text-brand-600 underline underline-offset-2"
+                  >
+                    @samu_checklists_bot
+                  </a>{" "}
+                  envia a chave no privado (ou digite /chave no grupo do plantões).
+                </p>
+                {keyError ? (
+                  <p className="mt-2 rounded-xl border border-brand-300 bg-brand-50 px-3 py-2 text-[13px] font-medium text-brand-800">
+                    {keyError}
+                  </p>
+                ) : null}
+              </>
+            ) : null}
           </div>
 
           <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -588,12 +649,20 @@ export default function ChecklistPage() {
 
             {phase.kind === "intro" ? (
               <button
-                onClick={() => goTo({ kind: "group", index: 0 })}
-                disabled={doctorName.trim().length < 3}
+                onClick={() => void startChecklist()}
+                disabled={
+                  verifyingKey || doctorName.trim().length < 3 || (board.keyRequired && accessKey.length < 4)
+                }
                 className="inline-flex min-h-13 flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 text-[16px] font-bold text-white shadow-sm active:bg-brand-700 disabled:bg-slate-300"
               >
-                {answeredCount > 0 ? "Continuar checklist" : "Iniciar checklist"}
-                <ArrowRight className="h-5 w-5" />
+                {verifyingKey ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <>
+                    {answeredCount > 0 ? "Continuar checklist" : "Iniciar checklist"}
+                    <ArrowRight className="h-5 w-5" />
+                  </>
+                )}
               </button>
             ) : null}
 

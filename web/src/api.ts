@@ -49,6 +49,7 @@ export interface Board {
   day: string;
   dayLabel: string;
   degraded: boolean;
+  keyRequired: boolean;
   bases: BoardBase[];
 }
 
@@ -86,7 +87,7 @@ export interface BaseHistory {
   code: string;
   windowDays: number;
   days: HistoryDay[];
-  alerts: { key: string; label: string; sinceDay: string; obs: string | null }[];
+  alerts: { key: string; label: string; sinceDay: string; obs: string | null; reportedBy: string }[];
   latestObs: { label: string; obs: string }[];
 }
 
@@ -107,8 +108,17 @@ export const api = {
   board: () => getJson<Board>("/api/board"),
   checklist: () => getJson<ChecklistDef>("/api/checklist"),
   history: (code: string) => getJson<BaseHistory>(`/api/history/${encodeURIComponent(code)}`),
+  verifyKey: async (baseCode: string, key: string): Promise<{ ok: boolean; required: boolean }> => {
+    const res = await fetch("/api/keys/verify", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ baseCode, key }),
+    });
+    return (await res.json()) as { ok: boolean; required: boolean };
+  },
   submit: async (payload: {
     baseCode: string;
+    accessKey?: string;
     doctorName: string;
     doctorId?: string | null;
     occupancyId?: string | null;

@@ -47,6 +47,9 @@ export const config = {
 
   digestSlots: parseSlots(process.env.DIGEST_SLOTS),
 
+  /** Exige a chave do dia (entregue pelo bot) para registrar checklist. */
+  keyRequired: (process.env.CHECKLIST_KEY_REQUIRED ?? "true") !== "false",
+
   publicUrl: process.env.PUBLIC_URL ?? "https://checklist.mnrs.com.br",
 };
 
