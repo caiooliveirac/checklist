@@ -50,6 +50,9 @@ export const config = {
   /** Exige a chave do dia (entregue pelo bot) para registrar checklist. */
   keyRequired: (process.env.CHECKLIST_KEY_REQUIRED ?? "true") !== "false",
 
+  /** Token para integrações internas (ex.: bot do plantões buscar a chave do dia). */
+  internalToken: process.env.INTERNAL_API_TOKEN ?? "",
+
   publicUrl: process.env.PUBLIC_URL ?? "https://checklist.mnrs.com.br",
 };
 

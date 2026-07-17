@@ -5,7 +5,7 @@ import { getBoard, plantoesHealthy } from "./plantoes.js";
 import { bahiaDay, bahiaDayLabel } from "./day.js";
 import { createSubmission, latestByBase, lastFieldValues, ValidationError, type AnsweredItem } from "./submissions.js";
 import { recentHistory, HISTORY_DAYS } from "./history.js";
-import { verifyKey } from "./keys.js";
+import { verifyKey, getOrCreateKey } from "./keys.js";
 import { itemByKey } from "./checklist-def.js";
 import { notifySubmission } from "./bot.js";
 import { hashIp } from "./text.js";
@@ -144,6 +144,23 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
             .map((i) => ({ label: itemByKey(def, i.key)?.shortLabel ?? i.key, obs: i.obs ?? "" }))
         : [],
     };
+  });
+
+  // Integração interna (bot do plantões): chave do dia de uma base válida.
+  // Protegido por token compartilhado; só responde para bases do quadro.
+  app.get("/api/internal/keys/:code", async (req, reply) => {
+    if (!config.internalToken || req.headers["x-internal-token"] !== config.internalToken) {
+      reply.code(401);
+      return { ok: false, error: "não autorizado" };
+    }
+    const { code } = req.params as { code: string };
+    const { board } = await getBoard();
+    const base = board.find((b) => b.baseCode === code.toUpperCase());
+    if (!base) {
+      reply.code(404);
+      return { ok: false, error: "base desconhecida" };
+    }
+    return { ok: true, baseCode: base.baseCode, day: bahiaDay(), key: await getOrCreateKey(base.baseCode) };
   });
 
   // Verificação antecipada da chave do dia (para a UI validar antes de começar).
