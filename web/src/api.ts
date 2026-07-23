@@ -91,6 +91,20 @@ export interface BaseHistory {
   latestObs: { label: string; obs: string }[];
 }
 
+export interface Nonconformity {
+  id: string;
+  day: string;
+  doctorName: string | null;
+  description: string;
+  createdAt: string;
+  photoUrl: string;
+}
+
+export interface NonconformityList {
+  code: string;
+  items: Nonconformity[];
+}
+
 /** "2026-07-16" → "16/07". */
 export function dayLabel(day: string): string {
   const [, m, d] = day.split("-");
@@ -108,6 +122,28 @@ export const api = {
   board: () => getJson<Board>("/api/board"),
   checklist: () => getJson<ChecklistDef>("/api/checklist"),
   history: (code: string) => getJson<BaseHistory>(`/api/history/${encodeURIComponent(code)}`),
+  nonconformities: (code: string) =>
+    getJson<NonconformityList>(`/api/nonconformities/${encodeURIComponent(code)}`),
+  submitNonconformity: async (payload: {
+    baseCode: string;
+    accessKey?: string;
+    doctorName?: string | null;
+    description: string;
+    photo: string;
+  }): Promise<{ ok: boolean; error?: string; id?: string; createdAt?: string; photoUrl?: string }> => {
+    const res = await fetch("/api/nonconformities", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return (await res.json()) as {
+      ok: boolean;
+      error?: string;
+      id?: string;
+      createdAt?: string;
+      photoUrl?: string;
+    };
+  },
   verifyKey: async (baseCode: string, key: string): Promise<{ ok: boolean; required: boolean }> => {
     const res = await fetch("/api/keys/verify", {
       method: "POST",

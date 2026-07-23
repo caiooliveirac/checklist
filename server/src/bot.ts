@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard, Keyboard, type Context } from "grammy";
+import { Bot, InlineKeyboard, InputFile, Keyboard, type Context } from "grammy";
 import { config } from "./config.js";
 import { db } from "./db.js";
 import { bahiaDay, bahiaDayLabel, bahiaTime } from "./day.js";
@@ -9,6 +9,7 @@ import { materialButtons, materialHistoryText, recentMissing, missingSummaryText
 import { getOrCreateKey } from "./keys.js";
 import { latestByBase, type DaySubmission } from "./submissions.js";
 import type { StoredSubmission } from "./submissions.js";
+import type { StoredNonconformity } from "./nonconformities.js";
 
 /**
  * Bot @samu_checklists_bot — canal do coordenador:
@@ -144,6 +145,26 @@ export async function notifySubmission(sub: StoredSubmission): Promise<void> {
     if (sub.missingItems.length > 12) lines.push(`• … e mais ${sub.missingItems.length - 12}`);
   }
   await sendToAdmins(lines.join("\n"));
+}
+
+/** Aviso imediato com a foto quando um plantonista lança uma inconformidade. */
+export async function notifyNonconformity(nc: StoredNonconformity): Promise<void> {
+  if (!bot) return;
+  const time = bahiaTime(new Date(nc.createdAt));
+  const author = nc.doctorName ? ` · ${esc(nc.doctorName)}` : "";
+  const caption = [
+    `📷 <b>${esc(nc.baseCode)}</b> — inconformidade registrada às <b>${time}</b>${author}`,
+    "",
+    esc(nc.description),
+  ].join("\n");
+  const filename = `${nc.baseCode}-${nc.id}.${nc.contentType === "image/png" ? "png" : "jpg"}`;
+  for (const chatId of await adminChatIds()) {
+    try {
+      await bot.api.sendPhoto(chatId, new InputFile(nc.photo, filename), { caption, parse_mode: "HTML" });
+    } catch (err) {
+      console.error(`[bot] falha ao enviar foto para ${chatId}:`, err);
+    }
+  }
 }
 
 /** Envia o digest de um slot; com dedupe por dia+slot (a menos que force=true). */
