@@ -8,6 +8,7 @@ import { db, closeDb } from "./db.js";
 import { migrate } from "./migrate.js";
 import { registerRoutes } from "./routes.js";
 import { createBot, stopBot, sendDigest } from "./bot.js";
+import { purgeOldNonconformities, RETENTION_DAYS } from "./nonconformities.js";
 
 const WEB_DIST = fileURLToPath(new URL("../../web/dist", import.meta.url));
 
@@ -41,6 +42,16 @@ async function main(): Promise<void> {
   console.log(
     `[digest] slots agendados (${config.timezone}): ${config.digestSlots.map((s) => s.slot).join(", ") || "nenhum"}`,
   );
+
+  // Expurgo diário das fotos de inconformidade além da janela de retenção.
+  const purgeJob = new Cron("30 3 * * *", { timezone: config.timezone }, () => {
+    purgeOldNonconformities()
+      .then((n) => n > 0 && console.log(`[inconformidades] ${n} foto(s) expurgada(s) (>${RETENTION_DAYS}d)`))
+      .catch((err) => console.error("[inconformidades] falha no expurgo:", err));
+  });
+  jobs.push(purgeJob);
+  // Uma varredura no arranque cobre janelas em que o servidor ficou parado às 3h30.
+  void purgeOldNonconformities().catch(() => {});
 
   await app.listen({ port: config.port, host: config.host });
 

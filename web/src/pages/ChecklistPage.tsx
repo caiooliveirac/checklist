@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ArrowRight,
   BadgeCheck,
+  Camera,
   CheckCheck,
   CheckCircle2,
   ChevronLeft,
@@ -28,10 +29,13 @@ import {
   type BoardBase,
   type ChecklistDef,
   type ChecklistItemDef,
+  type Nonconformity,
 } from "../api";
 import { ItemRow } from "../components/ItemRow";
 import { ObsSheet } from "../components/ObsSheet";
 import { HistoryModal } from "../components/HistoryModal";
+import { PhotoSheet } from "../components/PhotoSheet";
+import { NonconformitySection } from "../components/NonconformitySection";
 
 type Phase = { kind: "intro" } | { kind: "group"; index: number } | { kind: "review" } | { kind: "done" };
 
@@ -76,7 +80,17 @@ export default function ChecklistPage() {
   const [doneAt, setDoneAt] = useState<string | null>(null);
   const [history, setHistory] = useState<BaseHistory | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [nonconformities, setNonconformities] = useState<Nonconformity[]>([]);
+  const [showPhoto, setShowPhoto] = useState(false);
+  const [photoDone, setPhotoDone] = useState(false);
   const hydrated = useRef(false);
+
+  function reloadNonconformities(): void {
+    api
+      .nonconformities(baseCode)
+      .then((r) => setNonconformities(r.items))
+      .catch(() => setNonconformities([]));
+  }
 
   useEffect(() => {
     Promise.all([api.checklist(), api.board()])
@@ -86,6 +100,8 @@ export default function ChecklistPage() {
       })
       .catch(() => setLoadError(true));
     api.history(baseCode).then(setHistory).catch(() => setHistory(null));
+    reloadNonconformities();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseCode]);
 
   const base: BoardBase | null = useMemo(
@@ -277,6 +293,18 @@ export default function ChecklistPage() {
             </span>
           ) : null}
           <button
+            onClick={() => setShowPhoto(true)}
+            aria-label="Registrar inconformidade com foto"
+            className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-brand-600 shadow-sm active:bg-slate-100"
+          >
+            <Camera className="h-5 w-5" />
+            {nonconformities.length > 0 ? (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-bold text-white">
+                {nonconformities.length}
+              </span>
+            ) : null}
+          </button>
+          <button
             onClick={() => setShowHistory(true)}
             aria-label="Checklists anteriores"
             className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm active:bg-slate-100"
@@ -387,6 +415,8 @@ export default function ChecklistPage() {
               </p>
             </div>
           ) : null}
+
+          <NonconformitySection items={nonconformities} />
 
           <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-[12px] font-semibold uppercase tracking-wide text-slate-400">Médico do plantão</p>
@@ -707,6 +737,30 @@ export default function ChecklistPage() {
       ) : null}
 
       {showHistory ? <HistoryModal code={baseCode} history={history} onClose={() => setShowHistory(false)} /> : null}
+
+      {showPhoto ? (
+        <PhotoSheet
+          baseCode={baseCode}
+          keyRequired={board.keyRequired}
+          accessKey={accessKey}
+          doctorName={doctorName}
+          onAccessKey={setAccessKey}
+          onClose={() => setShowPhoto(false)}
+          onSubmitted={() => {
+            setShowPhoto(false);
+            setPhotoDone(true);
+            reloadNonconformities();
+            window.setTimeout(() => setPhotoDone(false), 3500);
+          }}
+        />
+      ) : null}
+
+      {photoDone ? (
+        <div className="pop-in fixed inset-x-0 bottom-24 z-50 mx-auto flex w-max max-w-[92%] items-center gap-2 rounded-full bg-slate-900/90 px-4 py-2.5 text-[13px] font-semibold text-white shadow-lg">
+          <Camera className="h-4 w-4 text-emerald-400" />
+          Inconformidade enviada — coordenação avisada
+        </div>
+      ) : null}
 
       <ObsSheet
         item={sheetItem}

@@ -7,9 +7,15 @@ import { createSubmission, latestByBase, lastFieldValues, ValidationError, type 
 import { recentHistory, HISTORY_DAYS } from "./history.js";
 import { verifyKey, getOrCreateKey } from "./keys.js";
 import { itemByKey } from "./checklist-def.js";
-import { notifySubmission } from "./bot.js";
+import { notifySubmission, notifyNonconformity } from "./bot.js";
 import { hashIp } from "./text.js";
 import { config } from "./config.js";
+import {
+  createNonconformity,
+  listNonconformities,
+  getNonconformityPhoto,
+  ValidationError as NcValidationError,
+} from "./nonconformities.js";
 
 interface SubmitBody {
   baseCode?: string;
@@ -213,4 +219,89 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       throw err;
     }
   });
+
+  // Inconformidades (fotos): lista os metadados da unidade dentro da janela de
+  // retenção. Público por código — quem abre a unidade vê o que foi reportado.
+  app.get("/api/nonconformities/:code", async (req) => {
+    const { code } = req.params as { code: string };
+    const items = await listNonconformities(code);
+    return {
+      code: code.toUpperCase(),
+      items: items.map((n) => ({
+        id: n.id,
+        day: n.day,
+        doctorName: n.doctorName,
+        description: n.description,
+        createdAt: n.createdAt,
+        photoUrl: `/api/nonconformities/photo/${n.id}`,
+      })),
+    };
+  });
+
+  // Bytes da foto por id (opaco). Público, como o restante da unidade.
+  app.get("/api/nonconformities/photo/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!/^[0-9a-f-]{36}$/i.test(id)) {
+      reply.code(404);
+      return { ok: false, error: "not found" };
+    }
+    const found = await getNonconformityPhoto(id);
+    if (!found) {
+      reply.code(404);
+      return { ok: false, error: "not found" };
+    }
+    reply.header("Content-Type", found.contentType);
+    reply.header("Cache-Control", "private, max-age=86400");
+    return reply.send(found.photo);
+  });
+
+  // Lançamento de uma inconformidade com foto (JSON com a imagem em base64).
+  // bodyLimit ampliado para acomodar a foto já comprimida no cliente.
+  app.post(
+    "/api/nonconformities",
+    { bodyLimit: 12 * 1024 * 1024 },
+    async (req, reply) => {
+      const body = (req.body ?? {}) as {
+        baseCode?: string;
+        accessKey?: string;
+        doctorName?: string | null;
+        description?: string;
+        photo?: string;
+      };
+      try {
+        if (config.keyRequired) {
+          const keyOk = await verifyKey(body.baseCode ?? "", body.accessKey ?? "");
+          if (!keyOk) {
+            reply.code(403);
+            return {
+              ok: false,
+              error:
+                "Chave do dia inválida. Peça ao bot @samu_checklists_bot no privado (ou /chave no grupo do plantões).",
+            };
+          }
+        }
+        const stored = await createNonconformity({
+          baseCode: body.baseCode ?? "",
+          doctorName: body.doctorName ?? null,
+          description: body.description ?? "",
+          photoDataUrl: body.photo ?? "",
+          ipHash: hashIp(req.ip ?? ""),
+        });
+        // Avisa os admins com a foto em segundo plano — não atrasa a resposta.
+        notifyNonconformity(stored).catch((err) => app.log.error({ err }, "notifyNonconformity falhou"));
+        return {
+          ok: true,
+          id: stored.id,
+          createdAt: stored.createdAt,
+          photoUrl: `/api/nonconformities/photo/${stored.id}`,
+        };
+      } catch (err) {
+        if (err instanceof NcValidationError) {
+          reply.code(400);
+          return { ok: false, error: err.message };
+        }
+        throw err;
+      }
+    },
+  );
 }
