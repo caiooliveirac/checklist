@@ -8,6 +8,7 @@ import { recentHistory, HISTORY_DAYS } from "./history.js";
 import { verifyKey, getOrCreateKey } from "./keys.js";
 import { itemByKey } from "./checklist-def.js";
 import { notifySubmission, notifyNonconformity } from "./bot.js";
+import { collectDigestData } from "./digest.js";
 import { hashIp } from "./text.js";
 import { config } from "./config.js";
 import {
@@ -167,6 +168,31 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return { ok: false, error: "base desconhecida" };
     }
     return { ok: true, baseCode: base.baseCode, day: bahiaDay(), key: await getOrCreateKey(base.baseCode) };
+  });
+
+  // Integração interna (secretário `tom`, que entrega no WhatsApp): quem ainda
+  // não fez o checklist agora. Mesmo dado do digest do Telegram — o texto é
+  // problema de quem entrega, aqui sai só a lista.
+  app.get("/api/internal/briefing", async (req, reply) => {
+    if (!config.internalToken || req.headers["x-internal-token"] !== config.internalToken) {
+      reply.code(401);
+      return { ok: false, error: "não autorizado" };
+    }
+    const data = await collectDigestData();
+    return {
+      ok: true,
+      day: data.day,
+      dayLabel: data.dayLabel,
+      // `degraded` = o board veio da lista fixa de bases (plantões fora do ar):
+      // a pendência não é confiável e quem entrega avisa em vez de cobrar.
+      degraded: data.degraded,
+      feitos: data.done.length,
+      pendentes: data.pending.map((base) => ({
+        baseCode: base.baseCode,
+        doctorName: base.displayName ?? base.doctorName,
+        shiftLabel: base.shiftLabel,
+      })),
+    };
   });
 
   // Verificação antecipada da chave do dia (para a UI validar antes de começar).
