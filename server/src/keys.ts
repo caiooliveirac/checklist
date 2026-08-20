@@ -24,12 +24,17 @@ export async function getOrCreateKey(baseCode: string, day = bahiaDay()): Promis
   return String(rows[0]?.keyword ?? "");
 }
 
+/**
+ * Aceita a chave de hoje OU de ontem (48h): plantão noturno recebe a chave
+ * antes da meia-noite e envia o checklist de madrugada sem ser barrado.
+ */
 export async function verifyKey(baseCode: string, keyword: string, day = bahiaDay()): Promise<boolean> {
   const provided = (keyword ?? "").replace(/\D/g, "");
   if (!provided) return false;
-  const { rows } = await db.query(`SELECT keyword FROM base_keys WHERE day = $1 AND base_code = $2`, [
-    day,
-    baseCode.toUpperCase(),
-  ]);
-  return rows.length > 0 && String(rows[0]?.keyword) === provided;
+  const { rows } = await db.query(
+    `SELECT keyword FROM base_keys
+     WHERE base_code = $2 AND day BETWEEN $1::date - 1 AND $1::date`,
+    [day, baseCode.toUpperCase()],
+  );
+  return rows.some((r) => String(r.keyword) === provided);
 }

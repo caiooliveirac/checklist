@@ -92,7 +92,7 @@ async function doctorKeyMessage(base: OnDuty): Promise<string> {
     name ? `👨‍⚕️ Plantão: ${esc(name)}${base.shiftLabel ? ` (${esc(base.shiftLabel)})` : ""}` : "",
     "",
     `📋 ${config.publicUrl}/b/${base.baseCode}`,
-    "<i>A chave vale só hoje e só para essa ambulância.</i>",
+    "<i>A chave vale 48h (hoje e amanhã) e só para essa ambulância.</i>",
   ]
     .filter(Boolean)
     .join("\n");
