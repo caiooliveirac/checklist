@@ -17,3 +17,4 @@ server/dist/
 .DS_Store
 *.tsbuildinfo
 coverage/
+.serena/
