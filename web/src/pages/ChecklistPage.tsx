@@ -471,7 +471,7 @@ export default function ChecklistPage() {
                   >
                     @samu_checklists_bot
                   </a>{" "}
-                  envia a chave no privado (ou digite /chave no grupo do plantões).
+                  responde com a chave a qualquer mensagem no privado (ou digite /chave no grupo do plantões).
                 </p>
                 {keyError ? (
                   <p className="mt-2 rounded-xl border border-brand-300 bg-brand-50 px-3 py-2 text-[13px] font-medium text-brand-800">
