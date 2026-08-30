@@ -211,7 +211,7 @@ async function dayData(): Promise<DayData> {
   return { board, subs };
 }
 
-async function textPendentes(): Promise<string> {
+export async function textPendentes(): Promise<string> {
   const data = await collectDigestData();
   const total = data.done.length + data.pending.length;
   if (data.pending.length === 0) {
@@ -226,7 +226,7 @@ async function textPendentes(): Promise<string> {
 }
 
 /** Inconformidades (itens faltando) compiladas por unidade. */
-async function textFaltas(): Promise<string> {
+export async function textFaltas(): Promise<string> {
   const { subs } = await dayData();
   const def = getChecklistDef();
   const withMissing = [...subs.values()].filter((s) => s.missingCount > 0);
@@ -245,7 +245,7 @@ async function textFaltas(): Promise<string> {
 }
 
 /** Todas as observações do dia (inclusive de itens conformes), por unidade. */
-async function textObservacoes(): Promise<string> {
+export async function textObservacoes(): Promise<string> {
   const { subs } = await dayData();
   const def = getChecklistDef();
   const withObs = [...subs.values()]
@@ -267,7 +267,7 @@ async function textObservacoes(): Promise<string> {
 }
 
 /** Compilação completa de uma unidade. */
-async function textUnidade(code: string): Promise<string> {
+export async function textUnidade(code: string): Promise<string> {
   const { board, subs } = await dayData();
   const def = getChecklistDef();
   const base = board.find((b) => b.baseCode === code.toUpperCase());
