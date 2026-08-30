@@ -1,14 +1,14 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { db } from "./db.js";
 import { getChecklistDef } from "./checklist-def.js";
 import { getBoard, plantoesHealthy } from "./plantoes.js";
-import { bahiaDay, bahiaDayLabel } from "./day.js";
+import { bahiaDay, bahiaDayLabel, bahiaTime } from "./day.js";
 import { createSubmission, latestByBase, lastFieldValues, ValidationError, type AnsweredItem } from "./submissions.js";
-import { recentHistory, HISTORY_DAYS } from "./history.js";
+import { recentHistory, HISTORY_DAYS, materialButtons, materialHistoryText, missingSummaryText, recentMissing } from "./history.js";
 import { verifyKey, getOrCreateKey } from "./keys.js";
 import { itemByKey } from "./checklist-def.js";
-import { notifySubmission, notifyNonconformity } from "./bot.js";
-import { collectDigestData } from "./digest.js";
+import { notifySubmission, notifyNonconformity, textFaltas, textObservacoes, textPendentes, textUnidade } from "./bot.js";
+import { collectDigestData, renderDigestMessage } from "./digest.js";
 import { hashIp } from "./text.js";
 import { config } from "./config.js";
 import {
@@ -193,6 +193,98 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         shiftLabel: base.shiftLabel,
       })),
     };
+  });
+
+  // ── Menu interno para o bot dos Plantões (aposentadoria deste bot) ─────────
+  // Mesmo token do /api/internal/keys. Os textos saem PRONTOS em HTML do
+  // Telegram: a compilação continua aqui, junto do dado — o bot dos Plantões
+  // só entrega (e degrada didático se estas rotas sumirem). Contrato completo:
+  // docs/checklist-bot-migration.md no repo plantoes.
+  const menuAuthorized = (req: FastifyRequest, reply: FastifyReply): boolean => {
+    if (!config.internalToken || req.headers["x-internal-token"] !== config.internalToken) {
+      reply.code(401);
+      return false;
+    }
+    return true;
+  };
+
+  // getBoard nunca lança (degrada para a lista fixa de bases), então a checagem
+  // de base vale mesmo com o plantoes fora do ar.
+  const menuBaseExists = async (code: string): Promise<boolean> => {
+    const { board } = await getBoard();
+    return board.some((b) => b.baseCode === code.toUpperCase());
+  };
+
+  app.get("/api/internal/menu/status", async (req, reply) => {
+    if (!menuAuthorized(req, reply)) return { ok: false, error: "não autorizado" };
+    const data = await collectDigestData();
+    return { ok: true, text: renderDigestMessage(data, `consulta ${bahiaTime(new Date())}`) };
+  });
+
+  app.get("/api/internal/menu/pendentes", async (req, reply) => {
+    if (!menuAuthorized(req, reply)) return { ok: false, error: "não autorizado" };
+    return { ok: true, text: await textPendentes() };
+  });
+
+  app.get("/api/internal/menu/faltas", async (req, reply) => {
+    if (!menuAuthorized(req, reply)) return { ok: false, error: "não autorizado" };
+    return { ok: true, text: await textFaltas() };
+  });
+
+  app.get("/api/internal/menu/obs", async (req, reply) => {
+    if (!menuAuthorized(req, reply)) return { ok: false, error: "não autorizado" };
+    return { ok: true, text: await textObservacoes() };
+  });
+
+  app.get("/api/internal/menu/unit/:code", async (req, reply) => {
+    if (!menuAuthorized(req, reply)) return { ok: false, error: "não autorizado" };
+    const { code } = req.params as { code: string };
+    if (!(await menuBaseExists(code))) {
+      reply.code(404);
+      return { ok: false, error: "base desconhecida" };
+    }
+    return { ok: true, text: await textUnidade(code) };
+  });
+
+  app.get("/api/internal/menu/material/:code/:key", async (req, reply) => {
+    if (!menuAuthorized(req, reply)) return { ok: false, error: "não autorizado" };
+    const { code, key } = req.params as { code: string; key: string };
+    if (!(await menuBaseExists(code))) {
+      reply.code(404);
+      return { ok: false, error: "base desconhecida" };
+    }
+    if (!itemByKey(getChecklistDef(), key)) {
+      reply.code(404);
+      return { ok: false, error: "material desconhecido" };
+    }
+    return { ok: true, text: await materialHistoryText(code, key) };
+  });
+
+  app.get("/api/internal/menu/sumidos/:code", async (req, reply) => {
+    if (!menuAuthorized(req, reply)) return { ok: false, error: "não autorizado" };
+    const { code } = req.params as { code: string };
+    if (!(await menuBaseExists(code))) {
+      reply.code(404);
+      return { ok: false, error: "base desconhecida" };
+    }
+    const data = await recentMissing(code);
+    return {
+      ok: true,
+      text: missingSummaryText(code, data),
+      missing: data.missing.map((m) => ({ key: m.key, label: m.label })),
+    };
+  });
+
+  app.get("/api/internal/menu/units", async (req, reply) => {
+    if (!menuAuthorized(req, reply)) return { ok: false, error: "não autorizado" };
+    const day = bahiaDay();
+    const [{ board }, subs] = await Promise.all([getBoard(), latestByBase(day)]);
+    return { ok: true, day, units: board.map((b) => ({ code: b.baseCode, done: subs.has(b.baseCode) })) };
+  });
+
+  app.get("/api/internal/menu/materials", async (req, reply) => {
+    if (!menuAuthorized(req, reply)) return { ok: false, error: "não autorizado" };
+    return { ok: true, materials: materialButtons() };
   });
 
   // Verificação antecipada da chave do dia (para a UI validar antes de começar).
