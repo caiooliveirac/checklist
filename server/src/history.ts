@@ -15,6 +15,7 @@ export interface HistoryRow {
   doctorName: string;
   createdAt: Date;
   items: AnsweredItem[];
+  baseCode?: string;
 }
 
 /** Última submissão de cada dia da janela, mais recente primeiro. */
@@ -125,6 +126,69 @@ export interface MissingSummary {
   key: string;
   label: string;
   days: { day: string; doctorName: string; obs?: string }[];
+}
+
+export interface FaltaRecente {
+  base: string;
+  dia: string;
+  medico: string;
+  label: string;
+  obs: string | null;
+}
+
+/**
+ * O checklist mais recente de cada base dentro da janela, só o que ainda está
+ * faltando nele. Submissão antiga da janela não volta se a seguinte marcou ok.
+ */
+export function agregarFaltas(
+  submissions: HistoryRow[],
+  def: ChecklistDef,
+  { agora = new Date(), horas = 48 }: { agora?: Date; horas?: number } = {},
+): { horas: number; faltas: FaltaRecente[] } {
+  const corte = agora.getTime() - horas * 3_600_000;
+  const porBase = new Map<string, HistoryRow>();
+  for (const row of submissions) {
+    if (row.createdAt.getTime() < corte) continue;
+    const prev = porBase.get(row.baseCode ?? "");
+    if (!prev || row.createdAt.getTime() > prev.createdAt.getTime()) {
+      porBase.set(row.baseCode ?? "", row);
+    }
+  }
+  const faltas: FaltaRecente[] = [];
+  for (const row of porBase.values()) {
+    for (const item of row.items) {
+      if (item.state !== "missing") continue;
+      faltas.push({
+        base: row.baseCode ?? "",
+        dia: row.day,
+        medico: row.doctorName,
+        label: itemByKey(def, item.key)?.shortLabel ?? item.key,
+        obs: item.obs ?? null,
+      });
+    }
+  }
+  faltas.sort((a, b) => a.base.localeCompare(b.base) || a.label.localeCompare(b.label));
+  return { horas, faltas };
+}
+
+/** Últimas submissões de todas as bases, para o secretário listar faltas. */
+export async function faltasRecentes(horas = 48): Promise<{ horas: number; faltas: FaltaRecente[] }> {
+  const desde = new Date(Date.now() - horas * 3_600_000);
+  const { rows } = await db.query(
+    `SELECT base_code, day::text AS day, doctor_name, created_at, items
+     FROM submissions
+     WHERE created_at >= $1
+     ORDER BY created_at DESC`,
+    [desde],
+  );
+  const submissions: HistoryRow[] = rows.map((r) => ({
+    baseCode: String(r.base_code),
+    day: String(r.day),
+    doctorName: String(r.doctor_name),
+    createdAt: new Date(r.created_at),
+    items: Array.isArray(r.items) ? (r.items as AnsweredItem[]) : [],
+  }));
+  return agregarFaltas(submissions, getChecklistDef(), { horas });
 }
 
 /** Itens que faltaram nos últimos dias numa unidade. */

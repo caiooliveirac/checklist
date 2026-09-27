@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { materialButtons, missingSummaryText, HISTORY_DAYS } from "../src/history.js";
+import { agregarFaltas, materialButtons, missingSummaryText, HISTORY_DAYS } from "../src/history.js";
 import { getChecklistDef } from "../src/checklist-def.js";
 
 describe("materialButtons", () => {
@@ -11,6 +11,47 @@ describe("materialButtons", () => {
     expect(new Set(labels).size).toBe(labels.length); // sem duplicados
     expect(labels).toContain("Máscaras (adulto)");
     expect(labels).toContain("Máscaras (ped)");
+  });
+});
+
+describe("agregarFaltas", () => {
+  const def = getChecklistDef();
+  const item = def.groups[0]?.items[0];
+  const agora = new Date("2026-09-12T15:00:00.000Z");
+
+  it("fica com o checklist mais recente da base e ignora falta já corrigida", () => {
+    const relatorio = agregarFaltas([
+      {
+        baseCode: "BR05",
+        day: "2026-09-11",
+        doctorName: "Ana",
+        createdAt: new Date("2026-09-11T12:00:00.000Z"),
+        items: [{ key: item!.key, state: "missing", obs: "sem estoque" }],
+      },
+      {
+        baseCode: "BR05",
+        day: "2026-09-12",
+        doctorName: "Bia",
+        createdAt: new Date("2026-09-12T12:00:00.000Z"),
+        items: [{ key: item!.key, state: "ok" }],
+      },
+    ], def, { agora, horas: 48 });
+    expect(relatorio.faltas).toEqual([]);
+  });
+
+  it("lista o que o último checklist da janela ainda marca faltando", () => {
+    const relatorio = agregarFaltas([
+      {
+        baseCode: "IT30",
+        day: "2026-09-12",
+        doctorName: "Caio",
+        createdAt: new Date("2026-09-12T11:00:00.000Z"),
+        items: [{ key: item!.key, state: "missing", obs: "inoperante" }],
+      },
+    ], def, { agora, horas: 48 });
+    expect(relatorio.faltas).toEqual([
+      { base: "IT30", dia: "2026-09-12", medico: "Caio", label: item!.shortLabel, obs: "inoperante" },
+    ]);
   });
 });
 

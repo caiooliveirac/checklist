@@ -4,7 +4,7 @@ import { getChecklistDef } from "./checklist-def.js";
 import { getBoard, plantoesHealthy } from "./plantoes.js";
 import { bahiaDay, bahiaDayLabel, bahiaTime } from "./day.js";
 import { createSubmission, latestByBase, lastFieldValues, ValidationError, type AnsweredItem } from "./submissions.js";
-import { recentHistory, HISTORY_DAYS, materialButtons, materialHistoryText, missingSummaryText, recentMissing } from "./history.js";
+import { faltasRecentes, recentHistory, HISTORY_DAYS, materialButtons, materialHistoryText, missingSummaryText, recentMissing } from "./history.js";
 import { verifyKey, getOrCreateKey } from "./keys.js";
 import { itemByKey } from "./checklist-def.js";
 import { notifySubmission, notifyNonconformity, textFaltas, textObservacoes, textPendentes, textUnidade } from "./bot.js";
@@ -168,6 +168,19 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return { ok: false, error: "base desconhecida" };
     }
     return { ok: true, baseCode: base.baseCode, day: bahiaDay(), key: await getOrCreateKey(base.baseCode) };
+  });
+
+  // Integração interna (secretário `tom`): materiais ainda faltando no
+  // checklist mais recente de cada base, dentro da janela. Default 48h.
+  app.get("/api/internal/faltas", async (req, reply) => {
+    if (!config.internalToken || req.headers["x-internal-token"] !== config.internalToken) {
+      reply.code(401);
+      return { ok: false, error: "não autorizado" };
+    }
+    const horasPedidas = Number((req.query as { horas?: string }).horas);
+    const horas = Number.isFinite(horasPedidas) ? Math.min(24 * 14, Math.max(1, horasPedidas)) : 48;
+    const relatorio = await faltasRecentes(horas);
+    return { ok: true, ...relatorio };
   });
 
   // Integração interna (secretário `tom`, que entrega no WhatsApp): quem ainda
