@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildDef, autoShorten, getChecklistDef, itemByKey } from "../src/checklist-def.js";
+import { validateItems } from "../src/submissions.js";
 
 const DATA = fileURLToPath(new URL("../data", import.meta.url));
 const full = readFileSync(path.join(DATA, "checklist.md"), "utf8");
@@ -75,6 +76,15 @@ describe("checklist por base", () => {
   it("itemByKey acha rótulo de outra lista (compilados gerais e envios antigos do GOA)", () => {
     expect(itemByKey(getChecklistDef(), "goa-g4i4")?.shortLabel).toBe("Metalyse");
     expect(itemByKey(getChecklistDef("GOA"), "g1i1")?.label).toContain("RÁDIO");
+  });
+
+  it("envio do GOA ignora chaves da lista USA (rascunho antigo com lacre vazio)", () => {
+    const goa = getChecklistDef("GOA");
+    const answers = goa.groups.flatMap((g) =>
+      g.items.map((i) => ({ key: i.key, state: "ok" as const, ...(i.kind === "check" ? {} : { value: "2026-10-28" }) })),
+    );
+    const out = validateItems(goa, [...answers, { key: "g4i1", state: "ok" }]);
+    expect(out).toHaveLength(44);
   });
 });
 

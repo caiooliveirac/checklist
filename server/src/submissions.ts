@@ -50,9 +50,11 @@ function clean(s: unknown, max = MAX_TEXT): string {
 /** Valida a submissão contra a definição: todo item precisa de resposta. */
 export function validateItems(def: ChecklistDef, raw: AnsweredItem[]): AnsweredItem[] {
   const byKey = new Map<string, AnsweredItem>();
+  // Só itens da própria lista: itemByKey também acha chaves de outras listas.
+  const own = new Map(def.groups.flatMap((g) => g.items.map((i) => [i.key, i] as const)));
   for (const r of raw ?? []) {
     if (!r || typeof r.key !== "string") continue;
-    const item = itemByKey(def, r.key);
+    const item = own.get(r.key);
     if (!item) continue;
     const state = r.state === "missing" ? "missing" : "ok";
     const entry: AnsweredItem = { key: r.key, state };
