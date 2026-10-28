@@ -1,0 +1,69 @@
+# CHECKLIST GOA (HELICÓPTERO)
+
+<!--
+Mesmo formato do checklist.md (USA). Usado só pela base GOA.
+- As chaves levam o prefixo "goa-" (goa-g<seção>i<posição>) para não se
+  confundirem com as do checklist USA, que o GOA usou até out/2026.
+- Renumerar seções ou reordenar itens EXIGE migrar as chaves nas submissões
+  do GOA no banco (tabela submissions, coluna items).
+- checklist-goa_compact.md tem os rótulos curtos na MESMA ordem/quantidade.
+-->
+
+## 1. MALETA DE VIA AÉREA
+
+- [ ] LARINGOSCÓPIO (CABO PARA LÂMINAS COM FIBRA ÓPTICA — 01)
+- [ ] LÂMINAS RETAS MILLER (Nº 1, 2, 3 E 4)
+- [ ] LÂMINAS CURVAS MACINTOSH (Nº 1, 2, 3 E 4)
+- [ ] LÂMINAS DO VIDEOLARINGOSCÓPIO (MAC 3 E MAC 4)
+- [ ] LIDOCAÍNA SPRAY + SERINGA DE 20 ML (01)
+- [ ] CAPNÓGRAFO + ADAPTADOR
+- [ ] FIXADOR DE THOMAS (01)
+- [ ] AMBUS (ADULTO, PEDIÁTRICO E NEONATAL — 01 DE CADA)
+- [ ] BOUGIE (02)
+- [ ] FIOS GUIA (ADULTO 02, PEDIÁTRICO 01)
+- [ ] TUBOS OROTRAQUEAIS 2.5 A 5.5 (01 DE CADA)
+- [ ] TUBOS OROTRAQUEAIS 6.0 A 9.0 (02 DE CADA)
+- [ ] GUEDEL (Nº 3, 4 E 5 — 01 DE CADA)
+- [ ] TUBO LARÍNGEO (Nº 3, 4 E 5) + SERINGA DE 90 ML
+- [ ] MÁSCARA LARÍNGEA (Nº 3, 4 E 5) + SERINGA DE 60 ML
+- [ ] FRASCOS DE ASPIRAÇÃO E UMIDIFICADOR (01 DE CADA)
+- [ ] CATETER NASAL TIPO ÓCULOS + EXTENSOR DE O2 (01 DE CADA)
+- [ ] EXTENSOR PARA ASPIRAÇÃO (02)
+- [ ] MÁSCARAS (NEBULIZAÇÃO ADULTO, VENTURI E MNR — 01 DE CADA)
+- [ ] FILTRO BACTERIOLÓGICO (02)
+- [ ] ESPAÇADORES (ADULTO E PEDIÁTRICO — 01 DE CADA)
+
+## 2. MALETA DO VIDEOLARINGOSCÓPIO
+
+- [ ] TESTADO EM (PREENCHER DATA)
+- [ ] TELA DO VIDEOLARINGOSCÓPIO (FICA NA MALETA DE VIA AÉREA)
+- [ ] BATERIAS CARREGADAS (3/3)
+- [ ] LÂMINAS MAC 1 E MAC 2
+- [ ] LÂMINA D-BLADE
+
+## 3. EQUIPAMENTOS
+
+- [ ] MONITOR MULTIPARAMÉTRICO INSTRAMED
+- [ ] VENTILADOR OXYMAG (01) + MANGUEIRA
+- [ ] CIRCUITOS/TRAQUEIAS DO VENTILADOR (02)
+
+## 4. MALETA TIME (IAM)
+
+- [ ] AAS
+- [ ] CLOPIDOGREL
+- [ ] ISORDIL
+- [ ] METALYSE 50 MG
+- [ ] VALIDADE DA METALYSE (PREENCHER DATA)
+
+## 5. MOCHILA DE TRAUMA
+
+- [ ] TIRANTE (01)
+- [ ] COLAR CERVICAL (01)
+- [ ] HEAD-BLOCK (02)
+- [ ] TALAS (02)
+- [ ] GUEDEL (Nº 3, 4 E 5 — 01 DE CADA)
+- [ ] AMBUS (ADULTO, PEDIÁTRICO E NEONATAL — 01 DE CADA)
+- [ ] ATADURAS, COMPRESSAS E GAZES
+- [ ] TESOURAS (02)
+- [ ] OXÍMETRO (01)
+- [ ] TORNIQUETE (01)

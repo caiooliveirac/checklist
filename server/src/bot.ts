@@ -269,7 +269,7 @@ export async function textObservacoes(): Promise<string> {
 /** Compilação completa de uma unidade. */
 export async function textUnidade(code: string): Promise<string> {
   const { board, subs } = await dayData();
-  const def = getChecklistDef();
+  const def = getChecklistDef(code);
   const base = board.find((b) => b.baseCode === code.toUpperCase());
   if (!base) {
     const valid = board.map((b) => b.baseCode).join(", ");
@@ -320,7 +320,7 @@ async function unidadesKeyboard(prefix: string): Promise<InlineKeyboard> {
 
 function materialsKeyboard(code: string): InlineKeyboard {
   const kb = new InlineKeyboard();
-  materialButtons().forEach((m, i) => {
+  materialButtons(getChecklistDef(code)).forEach((m, i) => {
     kb.text(m.label, `mh:${code}:${m.key}`);
     if (i % 2 === 1) kb.row();
   });

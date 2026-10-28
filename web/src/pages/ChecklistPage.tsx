@@ -93,7 +93,7 @@ export default function ChecklistPage() {
   }
 
   useEffect(() => {
-    Promise.all([api.checklist(), api.board()])
+    Promise.all([api.checklist(baseCode), api.board()])
       .then(([d, b]) => {
         setDef(d);
         setBoard(b);
@@ -282,7 +282,7 @@ export default function ChecklistPage() {
             <h1 className="text-lg font-extrabold tracking-tight text-slate-900">
               {baseCode}
               <span className="ml-2 align-middle text-[12px] font-semibold uppercase tracking-wide text-brand-600">
-                checklist USA
+                {baseCode === "GOA" ? "checklist aeronave" : "checklist USA"}
               </span>
             </h1>
             <p className="truncate text-[12px] text-slate-500">{board.dayLabel}</p>

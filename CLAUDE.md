@@ -10,7 +10,7 @@ App do checklist diário das USAs (checklist.mnrs.com.br). Monorepo npm workspac
 
 ## Regras do projeto
 
-- **Itens do checklist**: `server/data/checklist.md` é a fonte de verdade (formato herdado do samu-normas: `## N. GRUPO` + `- [ ] ITEM`); `checklist_compact.md` tem os rótulos curtos na MESMA ordem/quantidade. Editar os dois juntos.
+- **Itens do checklist**: `server/data/checklist.md` é a fonte de verdade (formato herdado do samu-normas: `## N. GRUPO` + `- [ ] ITEM`); `checklist_compact.md` tem os rótulos curtos na MESMA ordem/quantidade. Editar os dois juntos. Base com lista própria (hoje só o GOA, helicóptero): `checklist-goa.md` + `checklist-goa_compact.md`, mapeada em `SPECIAL` de `server/src/checklist-def.ts`; chaves com prefixo `goa-`. `/api/checklist?base=<código>` devolve a lista da base.
 - **Fuso**: tudo em America/Bahia (`server/src/day.ts`); digests via croner em `index.ts`.
 - **plantoes**: acesso somente-leitura (usuário pg `checklist`, GRANT SELECT). Não escrever no banco do plantoes. Queries em `server/src/plantoes.ts`.
 - **Chave do dia**: exigência controlada por `CHECKLIST_KEY_REQUIRED` no `.deploy-env` (desligar = false, sem deploy). Bot entrega via identificação do plantonista (match do telegram_user_id do grupo com o plantão ativo).

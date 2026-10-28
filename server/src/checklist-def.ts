@@ -69,7 +69,7 @@ function parseMarkdown(md: string): RawGroup[] {
 function detectKind(label: string): { kind: ItemKind; hint?: string; autoDefault?: "today" | "tomorrow" } {
   const upper = label.toUpperCase();
   if (upper.startsWith("LACRE")) return { kind: "text", hint: "Número do lacre" };
-  if (upper.startsWith("CHECADA EM")) return { kind: "date", autoDefault: "today" };
+  if (upper.startsWith("CHECADA EM") || upper.startsWith("TESTADO EM")) return { kind: "date", autoDefault: "today" };
   if (upper.includes("PRÓXIMA TROCA") || upper.includes("PROXIMA TROCA")) return { kind: "date", autoDefault: "tomorrow" };
   if (upper.includes("PREENCHER DATA")) return { kind: "date" };
   return { kind: "check" };
@@ -86,7 +86,7 @@ function stripNumber(title: string): string {
   return title.replace(/^\d+(?:\.\d+)?\.?\s*/, "").trim();
 }
 
-export function buildDef(fullMd: string, compactMd?: string): ChecklistDef {
+export function buildDef(fullMd: string, compactMd?: string, { keyPrefix = "", version = "usa-v2" } = {}): ChecklistDef {
   const full = parseMarkdown(fullMd);
   const compact = compactMd ? parseMarkdown(compactMd) : [];
 
@@ -96,43 +96,76 @@ export function buildDef(fullMd: string, compactMd?: string): ChecklistDef {
 
   let idx = 0;
   const groups: ChecklistGroup[] = full.map((g) => ({
-    key: `g${g.num}`,
+    key: `${keyPrefix}g${g.num}`,
     title: stripNumber(g.title),
     items: g.items.map((label, ii) => {
       const short = compactFlat?.[idx] ?? autoShorten(label);
       idx += 1;
       const { kind, hint, autoDefault } = detectKind(label);
-      const item: ChecklistItem = { key: `g${g.num}i${ii + 1}`, label, shortLabel: short, kind };
+      const item: ChecklistItem = { key: `${keyPrefix}g${g.num}i${ii + 1}`, label, shortLabel: short, kind };
       if (hint) item.hint = hint;
       if (autoDefault) item.autoDefault = autoDefault;
       return item;
     }),
   }));
 
-  return { groups, totalItems: fullCount, version: "usa-v2" };
+  return { groups, totalItems: fullCount, version };
 }
 
-let cached: ChecklistDef | null = null;
+/**
+ * Bases com checklist próprio (arquivo `<nome>.md` + `<nome>_compact.md` em
+ * server/data). As demais usam o checklist USA. O prefixo das chaves separa os
+ * itens de cada lista no histórico (submissions.items).
+ */
+const SPECIAL: Record<string, { file: string; keyPrefix: string; version: string }> = {
+  GOA: { file: "checklist-goa", keyPrefix: "goa-", version: "goa-v1" },
+};
+const USA = { file: "checklist", keyPrefix: "", version: "usa-v2" };
 
-/** Definição carregada de server/data (cacheada — os arquivos são imutáveis no deploy). */
-export function getChecklistDef(): ChecklistDef {
-  if (!cached) {
-    const full = readFileSync(path.join(DATA_DIR, "checklist.md"), "utf8");
+const cache = new Map<string, ChecklistDef>();
+
+function load(spec: typeof USA): ChecklistDef {
+  let def = cache.get(spec.file);
+  if (!def) {
+    const full = readFileSync(path.join(DATA_DIR, `${spec.file}.md`), "utf8");
     let compact: string | undefined;
     try {
-      compact = readFileSync(path.join(DATA_DIR, "checklist_compact.md"), "utf8");
+      compact = readFileSync(path.join(DATA_DIR, `${spec.file}_compact.md`), "utf8");
     } catch {
       compact = undefined;
     }
-    cached = buildDef(full, compact);
+    def = buildDef(full, compact, { keyPrefix: spec.keyPrefix, version: spec.version });
+    cache.set(spec.file, def);
   }
-  return cached;
+  return def;
 }
 
-export function itemByKey(def: ChecklistDef, key: string): ChecklistItem | undefined {
+/** Definição da base (cacheada — os arquivos são imutáveis no deploy); sem base, a USA. */
+export function getChecklistDef(baseCode?: string | null): ChecklistDef {
+  return load(SPECIAL[(baseCode ?? "").toUpperCase()] ?? USA);
+}
+
+function findIn(def: ChecklistDef, key: string): ChecklistItem | undefined {
   for (const g of def.groups) {
     const item = g.items.find((i) => i.key === key);
     if (item) return item;
+  }
+  return undefined;
+}
+
+/**
+ * Item pela chave. Fora da definição dada, procura nas outras listas: rótulo de
+ * item GOA em compilado geral, ou envio antigo do GOA feito com a lista USA.
+ */
+export function itemByKey(def: ChecklistDef, key: string): ChecklistItem | undefined {
+  const found = findIn(def, key);
+  if (found) return found;
+  for (const spec of [USA, ...Object.values(SPECIAL)]) {
+    const other = load(spec);
+    if (other !== def) {
+      const item = findIn(other, key);
+      if (item) return item;
+    }
   }
   return undefined;
 }

@@ -120,7 +120,7 @@ export function localDay(offsetDays = 0): string {
 
 export const api = {
   board: () => getJson<Board>("/api/board"),
-  checklist: () => getJson<ChecklistDef>("/api/checklist"),
+  checklist: (code: string) => getJson<ChecklistDef>(`/api/checklist?base=${encodeURIComponent(code)}`),
   history: (code: string) => getJson<BaseHistory>(`/api/history/${encodeURIComponent(code)}`),
   nonconformities: (code: string) =>
     getJson<NonconformityList>(`/api/nonconformities/${encodeURIComponent(code)}`),

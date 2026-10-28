@@ -70,7 +70,7 @@ export function materialButtons(def: ChecklistDef = getChecklistDef()): { key: s
 
 /** Histórico de um material numa unidade: linha por dia + último a reportar presente. */
 export async function materialHistoryText(baseCode: string, itemKey: string): Promise<string> {
-  const def = getChecklistDef();
+  const def = getChecklistDef(baseCode);
   const item = itemByKey(def, itemKey);
   if (!item) return `Material não encontrado (${esc(itemKey)}).`;
 
@@ -193,7 +193,7 @@ export async function faltasRecentes(horas = 48): Promise<{ horas: number; falta
 
 /** Itens que faltaram nos últimos dias numa unidade. */
 export async function recentMissing(baseCode: string): Promise<{ history: HistoryRow[]; missing: MissingSummary[] }> {
-  const def = getChecklistDef();
+  const def = getChecklistDef(baseCode);
   const history = await recentHistory(baseCode);
   const byKey = new Map<string, MissingSummary>();
   for (const row of history) {

@@ -48,7 +48,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.get("/api/checklist", async () => getChecklistDef());
+  app.get("/api/checklist", async (req) => getChecklistDef((req.query as { base?: string }).base));
 
   app.get("/api/board", async () => {
     const day = bahiaDay();
@@ -89,7 +89,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   // anterior (o que está faltando e desde quando, e observações registradas).
   app.get("/api/history/:code", async (req) => {
     const { code } = req.params as { code: string };
-    const def = getChecklistDef();
+    const def = getChecklistDef(code);
     const history = await recentHistory(code);
 
     const days = history.map((h) => {
@@ -266,7 +266,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       reply.code(404);
       return { ok: false, error: "base desconhecida" };
     }
-    if (!itemByKey(getChecklistDef(), key)) {
+    if (!itemByKey(getChecklistDef(code), key)) {
       reply.code(404);
       return { ok: false, error: "material desconhecido" };
     }
@@ -297,7 +297,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/api/internal/menu/materials", async (req, reply) => {
     if (!menuAuthorized(req, reply)) return { ok: false, error: "não autorizado" };
-    return { ok: true, materials: materialButtons() };
+    return { ok: true, materials: materialButtons(getChecklistDef((req.query as { base?: string }).base)) };
   });
 
   // Verificação antecipada da chave do dia (para a UI validar antes de começar).

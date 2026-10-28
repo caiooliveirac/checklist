@@ -110,8 +110,8 @@ export interface StoredSubmission extends SubmissionRecord {
 }
 
 export async function createSubmission(input: SubmissionInput): Promise<StoredSubmission> {
-  const def = getChecklistDef();
   const baseCode = clean(input.baseCode, 16).toUpperCase();
+  const def = getChecklistDef(baseCode);
   const doctorName = clean(input.doctorName, 120);
   if (!baseCode) throw new ValidationError("Informe a unidade (base).");
   if (!doctorName || doctorName.length < 3) throw new ValidationError("Informe o nome do médico.");
@@ -124,7 +124,7 @@ export async function createSubmission(input: SubmissionInput): Promise<StoredSu
   const missingCount = items.filter((i) => i.state === "missing").length;
   const obsCount = items.filter((i) => i.obs).length;
 
-  const header = `CHECKLIST USA — ${baseCode} — ${doctorName} — ${day} ${bahiaTime(now)}`;
+  const header = `CHECKLIST ${baseCode === "GOA" ? "GOA" : "USA"} — ${baseCode} — ${doctorName} — ${day} ${bahiaTime(now)}`;
   const summaryText = renderSummaryText(def, items, header);
 
   const id = randomUUID();

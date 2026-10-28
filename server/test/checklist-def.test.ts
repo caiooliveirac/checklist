@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildDef, autoShorten, itemByKey } from "../src/checklist-def.js";
+import { buildDef, autoShorten, getChecklistDef, itemByKey } from "../src/checklist-def.js";
 
 const DATA = fileURLToPath(new URL("../data", import.meta.url));
 const full = readFileSync(path.join(DATA, "checklist.md"), "utf8");
@@ -50,6 +50,31 @@ describe("buildDef", () => {
     const def = buildDef(full, compact);
     expect(itemByKey(def, "g1i1")?.label).toContain("RÁDIO");
     expect(itemByKey(def, "nao-existe")).toBeUndefined();
+  });
+});
+
+describe("checklist por base", () => {
+  it("GOA tem lista própria, com chaves prefixadas e rótulos curtos em sincronia", () => {
+    const goa = getChecklistDef("goa");
+    expect(goa.version).toBe("goa-v1");
+    expect(goa.totalItems).toBe(44);
+    expect(goa.groups.map((g) => g.key)).toEqual(["goa-g1", "goa-g2", "goa-g3", "goa-g4", "goa-g5"]);
+    expect(goa.groups[0]!.items[0]!.shortLabel).toBe("Laringoscópio");
+    const dates = goa.groups.flatMap((g) => g.items).filter((i) => i.kind === "date");
+    expect(dates.map((i) => [i.key, i.autoDefault])).toEqual([
+      ["goa-g2i1", "today"],
+      ["goa-g4i5", undefined],
+    ]);
+  });
+
+  it("demais bases seguem no checklist USA", () => {
+    expect(getChecklistDef("IT30").version).toBe("usa-v2");
+    expect(getChecklistDef().version).toBe("usa-v2");
+  });
+
+  it("itemByKey acha rótulo de outra lista (compilados gerais e envios antigos do GOA)", () => {
+    expect(itemByKey(getChecklistDef(), "goa-g4i4")?.shortLabel).toBe("Metalyse");
+    expect(itemByKey(getChecklistDef("GOA"), "g1i1")?.label).toContain("RÁDIO");
   });
 });
 
